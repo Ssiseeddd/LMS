@@ -4,6 +4,8 @@
 
 import { Contract, Disbursement, ScheduledPayment, Repayment } from './types';
 import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths } from './financialEngine';
+import { getSupabaseClient, getSavedSupabaseConfig } from './supabaseClient';
+import { autoPushItem } from './supabaseSync';
 
 // Default initial date defaults to 2026-05-22
 const SYSTEM_DATE = '2026-05-22';
@@ -283,6 +285,13 @@ export function addContract(contract: Omit<Contract, 'disbursedAmount' | 'outsta
   contracts.push(newContract);
   localStorage.setItem('lms_contracts', JSON.stringify(contracts));
 
+  // Async Auto-sync to Supabase if connected
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync) {
+    autoPushItem(client, 'contracts', newContract);
+  }
+
   // If Hire Purchase, we execute single disbursement immediately equal to the credit limit
   if (contract.productType === 'HP') {
     disburseContract(
@@ -394,6 +403,19 @@ export function disburseContract(
   // Run audit to apply correct states
   runDailyAudit();
 
+  // Async Auto-sync to Supabase if connected
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync) {
+    autoPushItem(client, 'disbursements', newDisb);
+    autoPushItem(client, 'contracts', con);
+    const updatedSchedules = JSON.parse(localStorage.getItem('lms_statements') || '[]');
+    const contractSchedules = updatedSchedules.filter((sch: any) => sch.contractId === contractId);
+    for (const sch of contractSchedules) {
+      autoPushItem(client, 'scheduled_payments', sch);
+    }
+  }
+
   return newDisb;
 }
 
@@ -464,6 +486,18 @@ export function recordRepayment(
 
   contracts[currentConIndex] = con;
   localStorage.setItem('lms_contracts', JSON.stringify(contracts));
+
+  // Async Auto-sync to Supabase if connected
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync) {
+    autoPushItem(client, 'repayments', newRepay);
+    autoPushItem(client, 'contracts', con);
+    const contractSchedules = updatedScheduledPayments.filter(sch => sch.contractId === contractId);
+    for (const sch of contractSchedules) {
+      autoPushItem(client, 'scheduled_payments', sch);
+    }
+  }
 
   return newRepay;
 }
