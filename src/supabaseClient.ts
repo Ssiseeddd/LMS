@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // Load initial values from environment or localStorage
 export function getSavedSupabaseConfig() {
-  const url = localStorage.getItem('lms_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
-  const key = localStorage.getItem('lms_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const url = localStorage.getItem('lms_supabase_url') || (import.meta as any).env.VITE_SUPABASE_URL || '';
+  const key = localStorage.getItem('lms_supabase_anon_key') || (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
   const autoSync = localStorage.getItem('lms_supabase_auto_sync') !== 'false'; // default to true if keys present
   
   return { url, key, autoSync };

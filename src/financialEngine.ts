@@ -475,3 +475,115 @@ export function allocateHorizontalPayment(
     }
   };
 }
+
+/**
+ * Dynamic Daily Reducing-Balance Interest Recalculation
+ * Runs through all unpaid scheduled payments for a contract and recalculates
+ * interest and principal due based on the actual remaining outstanding principal.
+ */
+export function recalculateFutureSchedules(
+  contract: Contract,
+  schedules: ScheduledPayment[],
+  lastRepaymentDateStr: string
+): ScheduledPayment[] {
+  const rate = contract.interestRate / 100;
+  
+  // Get all schedules of this contract, sorted by due date
+  const contractSchedules = schedules
+    .filter(s => s.contractId === contract.id)
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+  // Let's track outstanding principal as we go through unpaid terms
+  let outstandingPrincipal = contract.outstandingPrincipal;
+
+  // Track the previous dueDate or contract startDate to compute days between periods
+  let lastAnchorDate = contract.startDate;
+
+  const updatedSchedules = contractSchedules.map((sch, index) => {
+    if (sch.status === 'PAID') {
+      // For fully paid schedules, they are settled. We carry forward their boundary anchor
+      lastAnchorDate = sch.dueDate;
+      return sch;
+    }
+
+    // Calculate days elapsed for this specific term
+    const days = getDaysBetween(lastAnchorDate, sch.dueDate);
+    
+    // Calculate daily interest based on outstandingPrincipal
+    let interest = 0;
+    if (contract.productType === 'LOAN' && contract.paymentFrequency === 'MONTHLY') {
+      interest = outstandingPrincipal * rate * (days / 365);
+    } else if (contract.productType === 'LOAN' && contract.paymentFrequency === 'ANNUAL') {
+      if (sch.termNumber === 1) {
+        interest = 0; // Year 1 interest is prepaid upfront (upfront deduction)
+      } else {
+        interest = outstandingPrincipal * rate; // Annual flat on outstanding
+      }
+    } else if (contract.productType === 'HP') {
+      // Hire Purchase monthly interest amortized recalculation
+      interest = outstandingPrincipal * (rate / 12);
+    }
+
+    const roundedInterest = Math.round(interest * 100) / 100;
+
+    // Use initial PMT (principalDue + interestDue) as installment target
+    const originalPMT = sch.principalDue + sch.interestDue;
+    
+    let principal = 0;
+    const isLastTerm = index === contractSchedules.length - 1;
+
+    if (isLastTerm) {
+      principal = outstandingPrincipal;
+    } else {
+      principal = Math.max(0, Math.min(originalPMT - roundedInterest, outstandingPrincipal));
+    }
+
+    // Ensure we don't reduce principal/interest due below already paid amounts
+    const finalInterestDue = Math.max(sch.interestPaid, roundedInterest);
+    const finalPrincipalDue = Math.max(sch.principalPaid, principal);
+
+    // Calculate principal actually allocated for amortization in this term
+    const unpaidPrincipalInTerm = Math.max(0, finalPrincipalDue - sch.principalPaid);
+    
+    // Subtract from rolling outstanding principal balance
+    outstandingPrincipal = Math.max(0, Number((outstandingPrincipal - unpaidPrincipalInTerm).toFixed(2)));
+
+    // HP tax and totals
+    const vat = contract.productType === 'HP' ? (finalPrincipalDue + finalInterestDue) * 0.07 : 0;
+    const roundedVat = Math.round(vat * 100) / 100;
+
+    const newTotalDue = Math.round((finalPrincipalDue + finalInterestDue + roundedVat + sch.penaltyDue + sch.trackingFeeDue) * 100) / 100;
+
+    // Check status
+    let status: ScheduledPayment['status'] = sch.status;
+    const totalPaid = sch.principalPaid + sch.interestPaid + sch.vatPaid + sch.penaltyPaid + sch.trackingFeePaid;
+    if (totalPaid >= newTotalDue - 0.02 && newTotalDue > 0) {
+      status = 'PAID';
+    } else if (totalPaid > 0) {
+      status = 'PARTIAL';
+    } else {
+      // Retain OVERDUE if it was overdue
+      status = sch.status === 'OVERDUE' ? 'OVERDUE' : 'NOT_PAID';
+    }
+
+    lastAnchorDate = sch.dueDate;
+
+    return {
+      ...sch,
+      principalDue: Math.round(finalPrincipalDue * 100) / 100,
+      interestDue: Math.round(finalInterestDue * 100) / 100,
+      vatDue: roundedVat,
+      totalDue: newTotalDue,
+      status
+    };
+  });
+
+  // Merge the updated schedules list back into the main list
+  return schedules.map(s => {
+    if (s.contractId === contract.id) {
+      const updated = updatedSchedules.find(u => u.id === s.id);
+      return updated ? updated : s;
+    }
+    return s;
+  });
+}

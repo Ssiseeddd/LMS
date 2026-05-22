@@ -3,7 +3,7 @@
  */
 
 import { Contract, Disbursement, ScheduledPayment, Repayment } from './types';
-import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths } from './financialEngine';
+import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths, recalculateFutureSchedules } from './financialEngine';
 import { getSupabaseClient, getSavedSupabaseConfig } from './supabaseClient';
 import { autoPushItem } from './supabaseSync';
 
@@ -469,8 +469,12 @@ export function recordRepayment(
   // Decrease contract outstanding principal
   con.outstandingPrincipal = Math.max(0, Number((con.outstandingPrincipal - allocatedAmounts.appliedPrincipal).toFixed(2)));
   
+  // Dynamic daily reducing-balance interest & future schedules recalculation
+  const finalScheduledPayments = recalculateFutureSchedules(con, updatedScheduledPayments, paymentDate);
+  localStorage.setItem('lms_statements', JSON.stringify(finalScheduledPayments));
+
   // Check if contract is now fully closed
-  const remainingDue = updatedScheduledPayments
+  const remainingDue = finalScheduledPayments
     .filter(s => s.contractId === contractId)
     .reduce((sum, s) => sum + (s.principalDue - s.principalPaid + s.interestDue - s.interestPaid), 0);
   
@@ -478,7 +482,7 @@ export function recordRepayment(
     con.status = 'CLOSED';
   } else {
     // Re-audit state
-    const overdueSchedules = updatedScheduledPayments.filter(s => s.contractId === contractId && s.status === 'OVERDUE');
+    const overdueSchedules = finalScheduledPayments.filter(s => s.contractId === contractId && s.status === 'OVERDUE');
     if (overdueSchedules.length < 2 && con.status === 'DEFAULT') {
       con.status = 'ACTIVE';
     }
@@ -493,7 +497,7 @@ export function recordRepayment(
   if (client && config.autoSync) {
     autoPushItem(client, 'repayments', newRepay);
     autoPushItem(client, 'contracts', con);
-    const contractSchedules = updatedScheduledPayments.filter(sch => sch.contractId === contractId);
+    const contractSchedules = finalScheduledPayments.filter(sch => sch.contractId === contractId);
     for (const sch of contractSchedules) {
       autoPushItem(client, 'scheduled_payments', sch);
     }
