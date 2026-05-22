@@ -1,0 +1,6 @@
+{
+  "name": "LMS Enterprise Loan Management",
+  "description": "Full-scale Enterprise Loan Management System supporting Hire Purchase and Flexible Loan products with horizontal payment allocation, grace periods, auto billing, and PDF receipts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
