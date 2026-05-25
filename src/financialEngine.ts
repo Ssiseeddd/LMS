@@ -4,6 +4,25 @@
 
 import { Contract, ScheduledPayment, Repayment, RepaymentAllocationItem, Disbursement } from './types';
 
+function getStoredParameters() {
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem('lms_parameters');
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+  return {
+    penaltyRate: 15,
+    trackingFeeTier1: 50,
+    trackingFeeTier2: 100,
+    vatRate: 7
+  };
+}
+
 /**
  * Calculates days between two date strings
  */
@@ -60,9 +79,11 @@ export function generateInitialSchedule(
   const schedule: ScheduledPayment[] = [];
   const start = new Date(disburseDate);
   const rate = contract.interestRate / 100;
+  const params = getStoredParameters();
+  const vatRateDecimal = params.vatRate / 100;
 
   if (contract.productType === 'HP') {
-    // Hire Purchase: Single full drawdown, monthly installments with 7% VAT on each installment
+    // Hire Purchase: Single full drawdown, monthly installments with dynamic VAT on each installment
     const pmtExVat = calculatePMT(disbursedAmount, contract.interestRate, contract.termMonths);
     let remainingPrincipal = disbursedAmount;
 
@@ -70,7 +91,7 @@ export function generateInitialSchedule(
       const dueDate = addMonths(disburseDate, i, contract.dueDay);
       const interest = remainingPrincipal * (rate / 12);
       const principal = Math.min(pmtExVat - interest, remainingPrincipal);
-      const vat = (principal + interest) * 0.07; // 7% VAT on full installment
+      const vat = (principal + interest) * vatRateDecimal; // Dynamic VAT on full installment
 
       schedule.push({
         id: `${contract.id}-SCH-${i}`,
@@ -230,6 +251,34 @@ export function auditAndApplyOverdueState(
 ): { updatedSchedules: ScheduledPayment[]; updatedContracts: Contract[] } {
   const today = new Date(currentDateStr);
   const gracePeriodDays = 3; // e.g. 3 days before charging penalty
+  const params = getStoredParameters();
+  const penaltyRateDecimal = params.penaltyRate / 100;
+  const vatRateDecimal = params.vatRate / 100;
+
+  // Pre-calculate consecutive overdue streaks per contract
+  const contractOverdueStreaks: { [contractId: string]: { [termNumber: number]: number } } = {};
+  const uniqContractIds = Array.from(new Set(scheduledPayments.map(s => s.contractId)));
+
+  for (const cid of uniqContractIds) {
+    const cSchedules = scheduledPayments
+      .filter(s => s.contractId === cid)
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      
+    let streak = 0;
+    contractOverdueStreaks[cid] = {};
+    for (const s of cSchedules) {
+      const unpaidP = s.principalDue - s.principalPaid;
+      const unpaidI = s.interestDue - s.interestPaid;
+      const isOverdue = (new Date(s.dueDate) < today && (unpaidP > 0 || unpaidI > 0));
+      if (isOverdue) {
+        streak += 1;
+        contractOverdueStreaks[cid][s.termNumber] = streak;
+      } else {
+        streak = 0;
+        contractOverdueStreaks[cid][s.termNumber] = 0;
+      }
+    }
+  }
 
   const schedulesCopy = scheduledPayments.map(sch => {
     const contract = contracts.find(c => c.id === sch.contractId);
@@ -243,36 +292,30 @@ export function auditAndApplyOverdueState(
       const daysOverdue = Math.max(0, getDaysBetween(sch.dueDate, currentDateStr));
       
       // Calculate Tracking Fee (ค่าติดตามทวงถาม)
-      // HP: Has 7% VAT (50 THB + VAT = 53.50, or 100 THB + VAT = 107.00)
+      // HP: Has VAT
       // Loan also has VAT for tracking fee as requested.
-      // Single terms overdue -> 50 THB + VAT. 2+ terms overdue consecutive -> 100 THB + VAT.
+      // Single terms overdue -> Tier 1 (50) + VAT. 2+ terms overdue consecutive -> Tier 2 (100) + VAT.
       // No tracking fee if unpaid principal is <= 1000 THB
       let trackingFee = 0;
       let trackingVat = 0;
 
       if (unpaidPrincipal > 1000) {
-        // Find how many total due schedules of this contract are overdue
-        const overdueSchedules = scheduledPayments.filter(s => 
-          s.contractId === sch.contractId && 
-          new Date(s.dueDate) < today && 
-          (s.principalDue - s.principalPaid > 0)
-        );
-        const overdueCount = overdueSchedules.length;
+        const streak = contractOverdueStreaks[sch.contractId]?.[sch.termNumber] || 1;
 
-        if (overdueCount >= 2) {
-          trackingFee = 100;
+        if (streak >= 2) {
+          trackingFee = params.trackingFeeTier2;
         } else {
-          trackingFee = 50;
+          trackingFee = params.trackingFeeTier1;
         }
         
-        // Fee has VAT (both HP and LOAN collection fees has VAT of 7%)
-        trackingVat = trackingFee * 0.07;
+        // Fee has VAT (tracking fee has VAT of dynamic rate)
+        trackingVat = trackingFee * vatRateDecimal;
       }
 
-      // Penalty (ค่าเบี้ยปรับ): standard 15% per annum on unpaid principal after grace period
+      // Penalty (ค่าเบี้ยปรับ): dynamic penaltyRate% per annum on unpaid principal after grace period
       let penalty = 0;
       if (daysOverdue > gracePeriodDays && unpaidPrincipal > 0) {
-        penalty = unpaidPrincipal * 0.15 * (daysOverdue / 365);
+        penalty = unpaidPrincipal * penaltyRateDecimal * (daysOverdue / 365);
       }
 
       const totalPenalty = Math.round(penalty * 100) / 100;
@@ -487,6 +530,8 @@ export function recalculateFutureSchedules(
   lastRepaymentDateStr: string
 ): ScheduledPayment[] {
   const rate = contract.interestRate / 100;
+  const params = getStoredParameters();
+  const vatRateDecimal = params.vatRate / 100;
   
   // Get all schedules of this contract, sorted by due date
   const contractSchedules = schedules
@@ -549,7 +594,7 @@ export function recalculateFutureSchedules(
     outstandingPrincipal = Math.max(0, Number((outstandingPrincipal - unpaidPrincipalInTerm).toFixed(2)));
 
     // HP tax and totals
-    const vat = contract.productType === 'HP' ? (finalPrincipalDue + finalInterestDue) * 0.07 : 0;
+    const vat = contract.productType === 'HP' ? (finalPrincipalDue + finalInterestDue) * vatRateDecimal : 0;
     const roundedVat = Math.round(vat * 100) / 100;
 
     const newTotalDue = Math.round((finalPrincipalDue + finalInterestDue + roundedVat + sch.penaltyDue + sch.trackingFeeDue) * 100) / 100;

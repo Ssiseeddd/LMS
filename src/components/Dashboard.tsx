@@ -372,13 +372,31 @@ export default function Dashboard() {
           <h2 className="text-xl font-bold text-[#25348D] tracking-tight">ระบบบริหารจัดการพอร์ตลูกหนี้ (LMS Dashboards)</h2>
           <p className="text-slate-500 text-xs mt-1">ข้อมูลวิเคราะห์ภาพรวมวงเงินหนี้ ผลิตภัณฑ์เช่าซื้อ และสินเชื่อกลุ่มปลูกป่า (ข้อมูลจำลอง ณ วันที่ {SYSTEM_DATE})</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-        >
-          <RefreshCcw className="w-4 h-4 cursor-pointer" />
-          <span>ดึงข้อมูลล่าสุด</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => {
+              if (window.confirm('คุณต้องการรีเซ็ตฐานข้อมูลทดลองกลับไปเป็นค่าเริ่มต้น (3 สัญญาหลัก) หรือไม่?')) {
+                localStorage.removeItem('lms_contracts');
+                localStorage.removeItem('lms_disbursements');
+                localStorage.removeItem('lms_statements');
+                localStorage.removeItem('lms_repayments');
+                window.location.reload();
+              }
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg transition border border-rose-200"
+          >
+            <RefreshCcw className="w-4 h-4 cursor-pointer" />
+            <span>รีเซ็ตข้อมูลระบบจำลอง</span>
+          </button>
+          
+          <button
+            onClick={handleRefresh}
+            className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition border border-slate-200"
+          >
+            <RefreshCcw className="w-4 h-4 cursor-pointer" />
+            <span>ดึงข้อมูลล่าสุด</span>
+          </button>
+        </div>
       </div>
 
       {/* TAB 1: OVERVIEW DASHBOARD */}

@@ -10,6 +10,7 @@ import InputContract from './components/InputContract';
 import Disbursement from './components/Disbursement';
 import Statement from './components/Statement';
 import Repayment from './components/Repayment';
+import Parameters from './components/Parameters';
 import { 
   getSavedSupabaseConfig, 
   saveSupabaseConfig, 
@@ -32,11 +33,12 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   XCircle, 
-  RefreshCw 
+  RefreshCw,
+  SlidersHorizontal
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment' | 'parameters'>('dashboard');
   const [showSqlPanel, setShowSqlPanel] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -231,6 +233,16 @@ export default function App() {
             <Coins className="w-4 h-4 text-inherit" />
             <span>REPAYMENTS</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('parameters')}
+            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'parameters' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4 text-inherit" />
+            <span>LMS PARAMETERS</span>
+          </button>
         </nav>
 
         <div className="p-5 border-t border-white/10 text-[10px] text-slate-400 space-y-1.5 leading-relaxed">
@@ -261,6 +273,7 @@ export default function App() {
             {activeTab === 'disbursement' && 'Disbursements Registry'}
             {activeTab === 'statement' && 'Statements Active Billings'}
             {activeTab === 'repayment' && 'Repayments Log & Tax Invoices'}
+            {activeTab === 'parameters' && 'LMS System Parameters'}
           </h1>
 
           <div className="flex items-center space-x-4">
@@ -338,6 +351,12 @@ export default function App() {
           >
             Repayment
           </button>
+          <button
+            onClick={() => setActiveTab('parameters')}
+            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'parameters' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+          >
+            Parameters
+          </button>
         </div>
 
         {/* Main Body Stage Area */}
@@ -347,6 +366,7 @@ export default function App() {
           {activeTab === 'disbursement' && <Disbursement />}
           {activeTab === 'statement' && <Statement />}
           {activeTab === 'repayment' && <Repayment />}
+          {activeTab === 'parameters' && <Parameters />}
         </main>
 
         {/* Corporate branding Footer */}

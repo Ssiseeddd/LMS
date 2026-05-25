@@ -2,12 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { getContracts, addContract, runDailyAudit } from '../dbStore';
 import { Contract, ProductType, PaymentFrequency } from '../types';
 import { Search, Plus, Download, FileSpreadsheet, ShieldCheck, CheckCircle2, UserCheck, PhoneCall, HelpCircle } from 'lucide-react';
+import ContractDetailModal from './ContractDetailModal';
 
 export default function InputContract() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchName, setSearchName] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Detail Modal states
+  const [selectedConForDetail, setSelectedConForDetail] = useState<Contract | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   // Form states
   const [id, setId] = useState('');
@@ -178,12 +183,13 @@ export default function InputContract() {
                 <th className="p-4 text-center">อัตราดอกเบี้ย</th>
                 <th className="p-4 text-center">วันครบดิว</th>
                 <th className="p-4 text-center">สถานะ</th>
+                <th className="p-4 text-center">เครื่องมือ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-600">
               {filteredContracts.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-400">
+                  <td colSpan={11} className="p-8 text-center text-slate-400 font-semibold">
                     ไม่พบข้อมูลสัญญาใดๆ ในตารางขณะนี้ ทดลองกดปุ่มเพื่อสร้างสัญญาใหม่
                   </td>
                 </tr>
@@ -213,6 +219,17 @@ export default function InputContract() {
                         {con.status === 'ACTIVE' ? 'ปกติ (ACTIVE)' : con.status === 'DEFAULT' ? 'ผิดนัดชำระ (DEFAULT)' : 'ปิดยอดแล้ว (CLOSED)'}
                       </span>
                     </td>
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={() => {
+                          setSelectedConForDetail(con);
+                          setIsDetailOpen(true);
+                        }}
+                        className="px-2.5 py-1 bg-[#25348D] font-bold text-white hover:bg-[#213F9A] rounded text-[10px] transition cursor-pointer shadow-xs"
+                      >
+                        ดูรายละเอียด
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -223,7 +240,7 @@ export default function InputContract() {
 
       {/* Creation Modal Form */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto w-full h-full">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-slate-100 bg-[#25348D] rounded-t-xl text-white flex justify-between items-center">
               <div className="flex items-center space-x-2">
@@ -463,6 +480,17 @@ export default function InputContract() {
             </form>
           </div>
         </div>
+      )}
+      {/* Contract Detail Modal */}
+      {selectedConForDetail && (
+        <ContractDetailModal
+          isOpen={isDetailOpen}
+          onClose={() => {
+            setIsDetailOpen(false);
+            setSelectedConForDetail(null);
+          }}
+          contract={selectedConForDetail}
+        />
       )}
     </div>
   );

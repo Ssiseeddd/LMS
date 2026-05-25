@@ -6,6 +6,13 @@ export type ProductType = 'HP' | 'LOAN';
 export type PaymentFrequency = 'MONTHLY' | 'ANNUAL';
 export type StatementStatus = 'NOT_PAID' | 'PARTIAL' | 'PAID' | 'OVERDUE';
 
+export interface SystemParameters {
+  penaltyRate: number; // e.g. 15 for 15% p.a.
+  trackingFeeTier1: number; // e.g. 50
+  trackingFeeTier2: number; // e.g. 100
+  vatRate: number; // e.g. 7 for 7%
+}
+
 export interface Contract {
   id: string; // Contract No., e.g., 'HP-2026-0001' or 'LN-2026-0001'
   customerName: string;

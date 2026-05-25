@@ -2,7 +2,7 @@
  * Database store module using localStorage with real-time defaults and Supabase structure mapping
  */
 
-import { Contract, Disbursement, ScheduledPayment, Repayment } from './types';
+import { Contract, Disbursement, ScheduledPayment, Repayment, SystemParameters } from './types';
 import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths, recalculateFutureSchedules } from './financialEngine';
 import { getSupabaseClient, getSavedSupabaseConfig } from './supabaseClient';
 import { autoPushItem } from './supabaseSync';
@@ -218,6 +218,15 @@ const DEFAULT_REPAYMENTS: Repayment[] = [
 ];
 
 export function initializeDB() {
+  if (!localStorage.getItem('lms_parameters')) {
+    const defaultParams: SystemParameters = {
+      penaltyRate: 15,
+      trackingFeeTier1: 50,
+      trackingFeeTier2: 100,
+      vatRate: 7
+    };
+    localStorage.setItem('lms_parameters', JSON.stringify(defaultParams));
+  }
   if (!localStorage.getItem('lms_contracts')) {
     localStorage.setItem('lms_contracts', JSON.stringify(DEFAULT_CONTRACTS));
   }
@@ -233,6 +242,22 @@ export function initializeDB() {
   }
   
   // Apply Audit dynamic values instantly
+  runDailyAudit();
+}
+
+export function getSystemParameters(): SystemParameters {
+  const raw = localStorage.getItem('lms_parameters');
+  if (raw) return JSON.parse(raw);
+  return {
+    penaltyRate: 15,
+    trackingFeeTier1: 50,
+    trackingFeeTier2: 100,
+    vatRate: 7
+  };
+}
+
+export function saveSystemParameters(params: SystemParameters) {
+  localStorage.setItem('lms_parameters', JSON.stringify(params));
   runDailyAudit();
 }
 
