@@ -296,20 +296,24 @@ export function auditAndApplyOverdueState(
       // Loan also has VAT for tracking fee as requested.
       // Single terms overdue -> Tier 1 (50) + VAT. 2+ terms overdue consecutive -> Tier 2 (100) + VAT.
       // No tracking fee if unpaid principal is <= 1000 THB
-      let trackingFee = 0;
-      let trackingVat = 0;
+      let totalTrackingFee = sch.trackingFeeDue;
 
-      if (unpaidPrincipal > 1000) {
-        const streak = contractOverdueStreaks[sch.contractId]?.[sch.termNumber] || 1;
+      if (totalTrackingFee <= 0) {
+        let trackingFee = 0;
+        let trackingVat = 0;
+        if (unpaidPrincipal > 1000) {
+          const streak = contractOverdueStreaks[sch.contractId]?.[sch.termNumber] || 1;
 
-        if (streak >= 2) {
-          trackingFee = params.trackingFeeTier2;
-        } else {
-          trackingFee = params.trackingFeeTier1;
+          if (streak >= 2) {
+            trackingFee = params.trackingFeeTier2;
+          } else {
+            trackingFee = params.trackingFeeTier1;
+          }
+          
+          // Fee has VAT (tracking fee has VAT of dynamic rate)
+          trackingVat = trackingFee * vatRateDecimal;
+          totalTrackingFee = Math.round((trackingFee + trackingVat) * 100) / 100;
         }
-        
-        // Fee has VAT (tracking fee has VAT of dynamic rate)
-        trackingVat = trackingFee * vatRateDecimal;
       }
 
       // Penalty (ค่าเบี้ยปรับ): dynamic penaltyRate% per annum on unpaid principal after grace period
@@ -319,7 +323,6 @@ export function auditAndApplyOverdueState(
       }
 
       const totalPenalty = Math.round(penalty * 100) / 100;
-      const totalTrackingFee = Math.round((trackingFee + trackingVat) * 100) / 100;
 
       return {
         ...sch,

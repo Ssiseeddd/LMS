@@ -1,19 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: "Kanit", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand-blue: #25348D;
-  --color-brand-sky: #41C3DB;
-  --color-brand-secondary: #213F9A;
+  /* Custom Color Palette Overwrites */
+  --color-brand-blue: #1463F3;
+  --color-brand-sky: #84A4FC;
+  --color-brand-secondary: #1463F3;
+  --color-brand-dark: #1D2023;
+  --color-brand-neutral: #CCD0D8;
+
+  /* Map core sky classes to use the new interactive blues */
+  --color-sky-50: #f0f5ff;
+  --color-sky-100: #e0ebff;
+  --color-sky-200: #c2d6ff;
+  --color-sky-300: #84A4FC;
+  --color-sky-400: #84A4FC;
+  --color-sky-500: #1463F3;
+  --color-sky-600: #1463F3;
+  --color-sky-700: #1463F3;
+  --color-sky-800: #0f4dc7;
+  --color-sky-900: #113f9c;
+
+  /* Map slate/dark classes to use the new dark charcoal and grey */
+  --color-slate-900: #1D2023;
+  --color-slate-800: #1D2023;
+  --color-slate-250: #CCD0D8;
+  --color-slate-200: #CCD0D8;
+  --color-slate-150: #e2e5ea;
+  --color-slate-100: #eceff2;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #f3f4f6;
-  color: #1e293b;
+  background-color: #f8fafc; /* Minimal slate white/grey */
+  color: #0f172a;
 }
 
 /* Elegant scrollbar styling */

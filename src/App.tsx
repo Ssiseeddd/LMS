@@ -38,9 +38,11 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment' | 'parameters'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment' | 'parameters' | 'dashboard'>('dashboard');
   const [showSqlPanel, setShowSqlPanel] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Supabase states
   const [supabaseUrl, setSupabaseUrl] = useState('');
@@ -170,197 +172,292 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans text-slate-800 antialiased selection:bg-[#41C3DB]/30 selection:text-slate-900">
+    <div className="min-h-screen bg-[#F4F5F7] flex flex-col lg:flex-row font-sans text-[#1D2023] antialiased selection:bg-[#1463F3]/20 selection:text-slate-900">
       
-      {/* Sidebar for Desktop */}
-      <aside className="w-64 bg-[#25348D] text-white hidden lg:flex flex-col shrink-0 border-r border-[#213F9A]">
-        <div className="p-6 flex items-center space-x-3 border-b border-[#213F9A]">
-          <div className="w-8 h-8 bg-[#41C3DB] text-[#25348D] rounded-lg flex items-center justify-center font-black text-base shadow">
-            L
+      {/* Sidebar for Desktop - Light Styled matching Nexus Mockup exactly */}
+      <aside className={`bg-white border-r border-[#CCD0D8] hidden lg:flex flex-col shrink-0 transition-all duration-300 ${
+        isSidebarCollapsed ? 'w-16' : 'w-64'
+      }`}>
+        <div className="p-5 flex items-center justify-between border-b border-[#F0F1F3]">
+          <div className="flex items-center space-x-2.5 overflow-hidden">
+            {/* Nexus brand emblem */}
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#1463F3] to-[#84A4FC] flex items-center justify-center font-black text-white text-sm shadow-sm shrink-0">
+              N
+            </div>
+            {!isSidebarCollapsed && (
+              <span className="text-base font-extrabold tracking-tight text-[#1D2023] font-sans whitespace-nowrap">
+                Nexus <span className="text-xs font-medium text-slate-400 font-mono">LMS</span>
+              </span>
+            )}
           </div>
-          <span className="text-lg font-bold tracking-tight">CorpLMS v2.0</span>
+          <button 
+            type="button"
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="p-1.5 rounded-lg border border-slate-150 text-slate-400 hover:text-[#1D2023] hover:bg-slate-50 cursor-pointer transition text-xs font-bold"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isSidebarCollapsed ? "→" : "←"}
+          </button>
         </div>
 
-        <nav className="flex-1 mt-6 px-4 space-y-1">
-          <div className="px-3 py-2 text-[10px] font-bold uppercase text-slate-400 tracking-wider">Navigation</div>
-          
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'dashboard' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 text-inherit" />
-            <span>DASHBOARD OVERVIEW</span>
-          </button>
+        <nav className="flex-grow mt-5 px-4 space-y-5 overflow-y-auto">
+          {/* Group 1: GENERAL */}
+          <div className="space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">General</div>
+            )}
+            
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              title="Dashboard Overview"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'dashboard' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <LayoutDashboard className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate">Dashboard</span>}
+            </button>
 
-          <button
-            onClick={() => setActiveTab('input')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'input' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <FileText className="w-4 h-4 text-inherit" />
-            <span>INPUT CONTRACT</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('repayment')}
+              title="Repayments Log & Payment"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'repayment' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <Coins className={`w-4 h-4 shrink-0 ${activeTab === 'repayment' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate">Payment (เงินคืน)</span>}
+            </button>
 
-          <button
-            onClick={() => setActiveTab('disbursement')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'disbursement' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <ArrowUpRight className="w-4 h-4 text-inherit" />
-            <span>DISBURSEMENTS</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('input')}
+              title="Customers & Contracts Registry"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'input' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <FileText className={`w-4 h-4 shrink-0 ${activeTab === 'input' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate flex-1 text-left">Customers สัญญา</span>}
+            </button>
 
-          <button
-            onClick={() => setActiveTab('statement')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'statement' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <Landmark className="w-4 h-4 text-inherit" />
-            <span>STATEMENTS</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('repayment')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'repayment' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <Coins className="w-4 h-4 text-inherit" />
-            <span>REPAYMENTS</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('parameters')}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'parameters' ? 'bg-[#41C3DB] text-[#25348D] shadow-md' : 'text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <SlidersHorizontal className="w-4 h-4 text-inherit" />
-            <span>LMS PARAMETERS</span>
-          </button>
-        </nav>
-
-        <div className="p-5 border-t border-white/10 text-[10px] text-slate-400 space-y-1.5 leading-relaxed">
-          <div className="flex items-center space-x-1.5">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
-              connectionStatus === 'connected_missing_tables' ? 'bg-amber-400' :
-              connectionStatus === 'testing' ? 'bg-sky-400 animate-spin' : 'bg-slate-400'
-            }`}></div>
-            <strong className="text-slate-200">
-              {connectionStatus === 'connected' ? 'Supabase Connected' :
-               connectionStatus === 'connected_missing_tables' ? 'Schema Incomplete' :
-               connectionStatus === 'testing' ? 'Connecting...' : 'Offline Sandbox'}
-            </strong>
+            <button
+              onClick={() => setActiveTab('statement')}
+              title="Billing Statements Active"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'statement' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <Landmark className={`w-4 h-4 shrink-0 ${activeTab === 'statement' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && (
+                <div className="flex items-center justify-between flex-grow min-w-0">
+                  <span className="truncate">Statements บิล</span>
+                  <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">3</span>
+                </div>
+              )}
+            </button>
           </div>
-          <div>Node: <span className="text-white font-mono">Prod-East-01</span></div>
-        </div>
-      </aside>
 
-      {/* Main Content Area Container */}
-      <div className="flex-grow flex flex-col min-h-screen lg:h-screen lg:overflow-y-auto bg-slate-50">
-        
-        {/* Header bar on top */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-8 shrink-0 z-30">
-          <h1 className="text-base font-bold text-slate-800 tracking-tight uppercase">
-            {activeTab === 'dashboard' && 'LMS Dashboard Overview'}
-            {activeTab === 'input' && 'Input Contract'}
-            {activeTab === 'disbursement' && 'Disbursements Registry'}
-            {activeTab === 'statement' && 'Statements Active Billings'}
-            {activeTab === 'repayment' && 'Repayments Log & Tax Invoices'}
-            {activeTab === 'parameters' && 'LMS System Parameters'}
-          </h1>
+          {/* Group 2: TOOLS */}
+          <div className="space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">Tools</div>
+            )}
 
-          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setActiveTab('disbursement')}
+              title="Disbursements Register"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'disbursement' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <ArrowUpRight className={`w-4 h-4 shrink-0 ${activeTab === 'disbursement' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate">Disbursment เบิก</span>}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('parameters')}
+              title="System Parameters & Rates"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-[11px] lg:text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'parameters' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <SlidersHorizontal className={`w-4 h-4 shrink-0 ${activeTab === 'parameters' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate">LMS Parameters</span>}
+            </button>
+          </div>
+
+          {/* Group 3: SUPPORT */}
+          <div className="space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">Support</div>
+            )}
+
             <button
               onClick={() => {
                 setShowSqlPanel(true);
                 setPanelTab('sync');
               }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#213F9A] hover:bg-[#1C3682] text-[#41C3DB] border border-[#41C3DB]/30 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
+              title="Supabase Database Settings"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-xs text-slate-500 hover:text-[#1D2023] hover:bg-slate-50 cursor-pointer transition ${
+                isSidebarCollapsed ? 'justify-center' : 'space-x-3'
+              }`}
             >
-              <Database className="w-3.5 h-3.5" />
-              <span>SUPABASE SETTINGS</span>
+              <Database className="w-4 h-4 text-slate-400 shrink-0" />
+              {!isSidebarCollapsed && <span className="truncate">Database Sync</span>}
             </button>
+          </div>
+        </nav>
 
-            <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-
-            <div className="text-right hidden sm:block">
-              <div className="text-xs font-semibold text-slate-700">Admin Operator</div>
-              <div className="text-[10px] text-slate-400 font-bold font-mono">ID: 884-291</div>
+        {/* User Card at bottom-left exactly matching Team segment */}
+        <div className="p-4 border-t border-[#F0F1F3] shrink-0 space-y-3">
+          {!isSidebarCollapsed && (
+            <div className="bg-[#F8F9FA] p-3 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 rounded-full bg-[#1463F3] text-white flex items-center justify-center font-bold text-[10px]">
+                  TM
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800 text-[11px]">Team Marketing</div>
+                  <div className="text-[10px] text-slate-400">Main Account</div>
+                </div>
+              </div>
+              <span className="text-slate-400 text-[9px]">↕</span>
             </div>
-            
-            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-[#25348D] text-xs">
-              OP
+          )}
+
+          {!isSidebarCollapsed && (
+            <button
+              onClick={() => {
+                setShowSqlPanel(true);
+                setPanelTab('sync');
+              }}
+              className="w-full py-2 bg-white hover:bg-slate-50 text-[#1D2023] border border-[#CCD0D8] rounded-xl text-xs font-bold font-sans cursor-pointer transition shadow-xs text-center"
+            >
+              Configure Cloud DB (Supabase)
+            </button>
+          )}
+
+          <div className="text-center text-[9px] text-slate-400 font-medium">
+            {!isSidebarCollapsed && <span>@ 2026 Nexus LMS Inc.</span>}
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area Container */}
+      <div className="flex-grow flex flex-col min-h-screen lg:h-screen lg:overflow-y-auto">
+        
+        {/* Header bar on top - Light colored, premium style from Nexus */}
+        <header className="h-16 bg-white border-b border-[#E5E7EB] flex items-center justify-between px-6 lg:px-8 shrink-0 z-30">
+          
+          {/* Custom Search Box looking like screenshot */}
+          <div className="flex items-center flex-1 max-w-md">
+            <div className="relative w-full">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                🔍
+              </span>
+              <input
+                type="text"
+                placeholder="ค้นหารายชื่อผู้เช่าชื้อหรือข้อมูลสัญญา... (Search ⌘+F)"
+                onChange={(e) => {
+                  // Custom window event to dynamically stream search filtering inside input tables or listings
+                  const event = new CustomEvent('global-contract-search', { detail: e.target.value });
+                  window.dispatchEvent(event);
+                }}
+                className="w-72 bg-[#F8F9FB] pl-10 pr-10 py-2 rounded-xl text-xs font-semibold text-[#1D2023] placeholder-slate-400 border border-transparent focus:outline-none focus:border-[#1463F3] focus:bg-white transition"
+              />
+              <span className="absolute inset-y-0 right-3 flex items-center text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-100 hidden sm:inline-flex">
+                ⌘ + F
+              </span>
+            </div>
+          </div>
+
+          {/* Right utility items */}
+          <div className="flex items-center space-x-5">
+            {/* User Profile matching 'Young Alaska' from screenshot */}
+            <div className="flex items-center space-x-3">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-bold text-[#1D2023]">Young Alaska</div>
+                <div className="text-[10px] text-slate-400 font-semibold uppercase">Business Operator</div>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-[#1463F3]/10 border border-[#1463F3]/20 flex items-center justify-center font-bold text-[#1463F3] text-xs shadow-xs shrink-0 select-none">
+                YA
+              </div>
             </div>
           </div>
         </header>
 
         {/* Mobile Header Block */}
-        <div className="lg:hidden bg-[#25348D] text-white px-4 py-3 flex justify-between items-center border-b border-[#213F9A]">
+        <div className="lg:hidden bg-white text-[#1D2023] px-4 py-3 flex justify-between items-center border-b border-[#E5E7EB]">
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-[#41C3DB] text-[#25348D] rounded flex items-center justify-center font-bold text-xs">L</div>
-            <span className="font-extrabold text-sm tracking-tight text-white">CorpLMS v2.0</span>
+            <div className="w-7 h-7 bg-gradient-to-tr from-[#1463F3] to-[#84A4FC] text-white rounded flex items-center justify-center font-bold text-xs shadow-xs">N</div>
+            <span className="font-extrabold text-xs tracking-tight text-[#1D2023] font-sans uppercase">Nexus LMS</span>
           </div>
           <button
             onClick={() => {
               setShowSqlPanel(true);
               setPanelTab('sync');
             }}
-            className="flex items-center space-x-1 px-2.5 py-1 bg-[#213F9A] hover:bg-[#1C3682] text-[#41C3DB] border border-[#41C3DB]/30 rounded text-xs font-bold cursor-pointer transition"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#F0F3F9] hover:bg-sky-100 text-[#1463F3] rounded-lg text-xs font-bold cursor-pointer transition"
           >
             <Database className="w-3.5 h-3.5" />
-            <span className="text-[10px]">SUPABASE SYNC</span>
+            <span className="text-[10px]">Cloud settings</span>
           </button>
         </div>
 
-        {/* Mobile Sticky Tab bar */}
-        <div className="lg:hidden bg-[#213F9A] text-white overflow-x-auto whitespace-nowrap scrollbar-none flex space-x-1 p-2 sticky top-0 z-40 border-b border-[#25348D] text-xs font-bold leading-none">
+        {/* Mobile Sticky Tab bar with dynamic visibleTabs filtering */}
+        <div className="lg:hidden bg-white text-slate-600 overflow-x-auto whitespace-nowrap scrollbar-none flex space-x-1.5 p-2.5 sticky top-0 z-40 border-b border-[#E5E7EB] text-[10px] font-bold leading-none">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'dashboard' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'dashboard' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
             Dashboard
           </button>
           <button
-            onClick={() => setActiveTab('input')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'input' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            onClick={() => setActiveTab('repayment')}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'repayment' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
-            Input Contract
+            Payments
           </button>
           <button
-            onClick={() => setActiveTab('disbursement')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'disbursement' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            onClick={() => setActiveTab('input')}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'input' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
-            Disbursement
+            Contracts
           </button>
           <button
             onClick={() => setActiveTab('statement')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'statement' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'statement' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
-            Statement
+            Statements
           </button>
           <button
-            onClick={() => setActiveTab('repayment')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'repayment' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            onClick={() => setActiveTab('disbursement')}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'disbursement' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
-            Repayment
+            Disbursements
           </button>
           <button
             onClick={() => setActiveTab('parameters')}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition ${activeTab === 'parameters' ? 'bg-[#41C3DB] text-[#25348D]' : 'text-white/80'}`}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'parameters' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
           >
             Parameters
           </button>
         </div>
 
         {/* Main Body Stage Area */}
-        <main className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-grow p-4 sm:p-5 lg:p-6 overflow-y-auto bg-[#F4F5F7]">
           {activeTab === 'dashboard' && <Dashboard />}
           {activeTab === 'input' && <InputContract />}
           {activeTab === 'disbursement' && <Disbursement />}
@@ -370,22 +467,22 @@ export default function App() {
         </main>
 
         {/* Corporate branding Footer */}
-        <footer className="bg-white border-t border-slate-200 px-6 sm:px-8 py-4 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 shrink-0 gap-3">
-          <div className="flex items-center space-x-6">
+        <footer className="bg-white border-t border-[#E5E7EB] px-6 sm:px-8 py-3 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-400 shrink-0 gap-3">
+          <div className="flex items-center space-x-6 font-sans">
             <div className="flex items-center">
               <div className={`w-2 h-2 rounded-full mr-2 animate-pulse ${
                 connectionStatus === 'connected' ? 'bg-emerald-500' :
-                connectionStatus === 'connected_missing_tables' ? 'bg-amber-500' : 'bg-slate-300'
+                connectionStatus === 'connected_missing_tables' ? 'bg-amber-500' : 'bg-slate-350'
               }`}></div>
-              <span className="font-semibold text-slate-600">
+              <span className="font-bold text-slate-500">
                 {connectionStatus === 'connected' ? 'Supabase Sync Active' :
                  connectionStatus === 'connected_missing_tables' ? 'Database Needs Schema SQL' : 'Simulated Sandbox Mode'}
               </span>
             </div>
-            <div className="text-[10px] text-slate-400 font-mono">Version 1.4.2-stable</div>
+            <div className="text-[10px] text-slate-400 font-mono">Version 2.0.0-stable</div>
           </div>
-          <div className="text-center sm:text-right text-slate-400 font-semibold">
-            © 2026 LMS Co., Ltd. Enterprise All Rights Reserved.
+          <div className="text-center sm:text-right text-slate-400 font-bold font-mono">
+            © 2026 CorpLMS Enterprise All Rights Reserved.
           </div>
         </footer>
 
@@ -397,8 +494,8 @@ export default function App() {
           <div className="bg-slate-900 text-slate-100 max-w-2xl w-full p-8 overflow-y-auto flex flex-col h-full shadow-2xl animate-fade-in">
             <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4">
               <div className="flex items-center space-x-2">
-                <Database className="w-6 h-6 text-[#41C3DB]" />
-                <h3 className="text-base font-bold text-[#41C3DB]">เชื่อมต่อคลาวด์ฐานข้อมูล Supabase</h3>
+                <Database className="w-6 h-6 text-sky-400" />
+                <h3 className="text-base font-bold text-sky-400">เชื่อมต่อคลาวด์ฐานข้อมูล Supabase</h3>
               </div>
               <button
                 onClick={() => setShowSqlPanel(false)}
@@ -413,7 +510,7 @@ export default function App() {
               <button
                 onClick={() => setPanelTab('sync')}
                 className={`py-3 px-4 border-b-2 transition cursor-pointer ${
-                  panelTab === 'sync' ? 'border-[#41C3DB] text-[#41C3DB]' : 'border-transparent text-slate-400 hover:text-slate-250'
+                  panelTab === 'sync' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-slate-250'
                 }`}
               >
                 1. เชื่อมต่อและซิงค์ข้อมูล (Cloud Sync)
@@ -421,7 +518,7 @@ export default function App() {
               <button
                 onClick={() => setPanelTab('sql')}
                 className={`py-3 px-4 border-b-2 transition cursor-pointer ${
-                  panelTab === 'sql' ? 'border-[#41C3DB] text-[#41C3DB]' : 'border-transparent text-slate-400 hover:text-slate-255'
+                  panelTab === 'sql' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-slate-255'
                 }`}
               >
                 2. สคริปต์ตรวจตารางระบบ (SQL Script)
@@ -465,7 +562,7 @@ export default function App() {
                       
                       {connectionStatus === 'connected_missing_tables' && missingTables.length > 0 && (
                         <div className="mt-2.5 p-2.5 bg-slate-950/60 rounded border border-amber-500/20 text-[10px] text-amber-400 space-y-1.5">
-                          <strong className="block text-[#41C3DB] font-extrabold pb-0.5">กรุณารันสคริปต์ SQL ขาดตารางดังต่อไปนี้เพื่อให้ระบบพร้อมทำงาน:</strong>
+                          <strong className="block text-sky-400 font-extrabold pb-0.5">กรุณารันสคริปต์ SQL ขาดตารางดังต่อไปนี้เพื่อให้ระบบพร้อมทำงาน:</strong>
                           <div className="flex flex-wrap gap-1.5 font-mono">
                             {missingTables.map(t => (
                               <span key={t} className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 font-bold">public.{t}</span>
@@ -492,7 +589,7 @@ export default function App() {
                         placeholder="https://yourprojectid.supabase.co"
                         value={supabaseUrl}
                         onChange={(e) => setSupabaseUrl(e.target.value)}
-                        className="w-full bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#41C3DB]/50"
+                        className="w-full bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/50"
                         required
                       />
                     </div>
@@ -506,7 +603,7 @@ export default function App() {
                         placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                         value={supabaseKey}
                         onChange={(e) => setSupabaseKey(e.target.value)}
-                        className="w-full bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#41C3DB]/50"
+                        className="w-full bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/50"
                         required
                       />
                     </div>
@@ -518,7 +615,7 @@ export default function App() {
                       id="auto-sync-opt"
                       checked={autoSync}
                       onChange={(e) => setAutoSync(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#41C3DB] accent-[#41C3DB] focus:ring-0 bg-slate-900 border-slate-800 cursor-pointer mt-0.5"
+                      className="w-4 h-4 rounded text-sky-500 accent-sky-500 focus:ring-0 bg-slate-900 border-slate-800 cursor-pointer mt-0.5"
                     />
                     <label htmlFor="auto-sync-opt" className="cursor-pointer font-medium leading-normal">
                       <strong className="text-slate-300 font-bold block">ซิงค์ออนไลน์เรียลไทม์ (Auto real-time sync with cloud DB)</strong>
@@ -530,7 +627,7 @@ export default function App() {
                     <button
                       type="submit"
                       disabled={connectionStatus === 'testing'}
-                      className="flex-1 py-2.5 bg-[#41C3DB] text-[#25348D] hover:bg-[#34b4cc] disabled:bg-slate-800 disabled:text-slate-500 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer shadow-md"
+                      className="flex-1 py-2.5 bg-sky-500 text-slate-950 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer shadow-md"
                     >
                       {connectionStatus === 'testing' ? (
                         <>
@@ -560,7 +657,7 @@ export default function App() {
                 {/* Cloud Replication Stage Section */}
                 {(connectionStatus === 'connected' || connectionStatus === 'connected_missing_tables') && (
                   <div className="mt-4 p-5 rounded-xl border border-slate-800 bg-slate-950/40 space-y-4">
-                    <div className="flex items-center space-x-2 text-xs font-bold text-[#41C3DB]">
+                    <div className="flex items-center space-x-2 text-xs font-bold text-sky-400">
                       <ArrowLeftRight className="w-4 h-4 border-none" />
                       <span>ศูนย์ควบคุมสัญญานข้อมูลออฟไลน์ & คลาวด์</span>
                     </div>
@@ -573,9 +670,9 @@ export default function App() {
                       <button
                         onClick={handlePushData}
                         disabled={syncingState === 'pushing' || syncingState === 'pulling'}
-                        className="py-2.5 bg-[#25348D] hover:bg-[#213F9A] text-white border border-[#213F9A] rounded-lg text-xs font-extrabold cursor-pointer transition flex flex-col items-center justify-center space-y-1 shadow disabled:opacity-50"
+                        className="py-2.5 bg-sky-600 hover:bg-sky-700 text-white border border-sky-600 rounded-lg text-xs font-extrabold cursor-pointer transition flex flex-col items-center justify-center space-y-1 shadow disabled:opacity-50"
                       >
-                        <span className="text-[9px] text-[#41C3DB] uppercase font-bold tracking-widest font-mono">Push Local DB</span>
+                        <span className="text-[9px] text-sky-200 uppercase font-bold tracking-widest font-mono">Push Local DB</span>
                         <span>อัปโหลดข้อมูล Local สู่คลาวด์</span>
                       </button>
 
@@ -593,7 +690,7 @@ export default function App() {
                       <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs leading-normal">
                         <div className="flex items-center space-x-2 font-bold mb-1">
                           {(syncingState === 'pushing' || syncingState === 'pulling') ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#41C3DB]" />
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-450" />
                           ) : syncingState === 'done' ? (
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                           ) : (
@@ -601,7 +698,7 @@ export default function App() {
                           )}
                           <span className={
                             syncingState === 'done' ? 'text-emerald-400' :
-                            syncingState === 'failed' ? 'text-rose-400' : 'text-[#41C3DB]'
+                            syncingState === 'failed' ? 'text-rose-400' : 'text-sky-400'
                           }>
                             {syncingState === 'pushing' && 'กำลังดำเนินการอัปโหลดประสานข้อมูล...'}
                             {syncingState === 'pulling' && 'กำลังดาวน์โหลดข้อมูลและบันทึก...'}
@@ -623,7 +720,7 @@ export default function App() {
 
                 {/* Instruction list */}
                 <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2 text-xs text-slate-350">
-                  <span className="font-extrabold text-[#41C3DB] flex items-center">
+                  <span className="font-extrabold text-sky-450 flex items-center">
                     <Info className="w-4 h-4 mr-1" /> ขั้นตอนการติดตั้ง:
                   </span>
                   <ol className="list-decimal pl-5 space-y-1 text-slate-400 leading-relaxed">
@@ -638,7 +735,7 @@ export default function App() {
                 <div className="flex-1 bg-slate-950 p-4 rounded-lg border border-slate-850 relative font-mono text-[11px] overflow-auto max-h-[300px]">
                   <button
                     onClick={handleCopySQL}
-                    className="absolute right-4 top-4 bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded flex items-center space-x-1.5 transition text-[#41C3DB] cursor-pointer"
+                    className="absolute right-4 top-4 bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded flex items-center space-x-1.5 transition text-sky-450 cursor-pointer"
                   >
                     {copied ? <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copied ? 'คัดลอกแล้ว!' : 'Copy SQL'}</span>
@@ -651,7 +748,7 @@ export default function App() {
             <div className="pt-6 border-t border-slate-800 mt-6 text-center">
               <button
                 onClick={() => setShowSqlPanel(false)}
-                className="px-6 py-2 bg-[#25348D] hover:bg-[#213F9A] text-white text-xs font-bold rounded-lg transition shrink-0 cursor-pointer"
+                className="px-6 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg transition shrink-0 cursor-pointer"
               >
                 กลับสู่แอปพลิเคชันหลัก
               </button>

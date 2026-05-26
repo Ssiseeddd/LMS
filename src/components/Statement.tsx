@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getScheduledPayments, getContracts } from '../dbStore';
 import { ScheduledPayment, Contract, StatementStatus } from '../types';
-import { Search, Printer, FileText, CheckCircle, AlertTriangle, Clock, PlayCircle } from 'lucide-react';
+import { Search, Printer } from 'lucide-react';
 import DocViewerModal from './DocViewerModal';
 
 export default function Statement() {
@@ -53,6 +53,14 @@ export default function Statement() {
 
   // Filter schedules
   const filteredSchedules = payments.filter(s => {
+    // หน้า Statement ถ้าไม่ถึงวันที่ก่อน Due 15 วัน ไม่ต้องแสดง (SYSTEM_DATE is '2026-05-22')
+    const dueTime = new Date(s.dueDate).getTime();
+    const sysTime = new Date('2026-05-22').getTime();
+    const diffDays = (dueTime - sysTime) / (1000 * 60 * 60 * 24);
+    if (diffDays > 15) {
+      return false;
+    }
+
     const parent = contracts.find(c => c.id === s.contractId);
     const parentName = parent ? parent.customerName.toLowerCase() : '';
     
@@ -65,40 +73,40 @@ export default function Statement() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* Search Filter Panel */}
-      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm space-y-4">
-        <h3 className="font-bold text-[#25348D] text-sm">ค้นหาข้อมูลเรียกเก็บตามดิวสัญญา (Statement Bills Filter)</h3>
+      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
+        <h3 className="font-extrabold text-xs uppercase tracking-wider font-mono text-sky-700">ค้นหาข้อมูลเรียกเก็บตามดิวสัญญา (Statement Bills Filter)</h3>
         
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
           <div>
-            <label className="block text-slate-500 font-semibold mb-1">เลขที่สัญญา</label>
+            <label className="block text-slate-505 font-bold mb-1">เลขที่สัญญา</label>
             <input
               type="text"
               placeholder="กรองเลขที่สัญญา..."
               value={searchContract}
               onChange={e => setSearchContract(e.target.value)}
-              className="w-full border border-slate-200 p-2 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50"
+              className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition font-mono uppercase"
             />
           </div>
 
           <div>
-            <label className="block text-slate-500 font-semibold mb-1">ชื่อสมาชิกลูกหนี้</label>
+            <label className="block text-slate-505 font-bold mb-1">ชื่อสมาชิกลูกหนี้</label>
             <input
               type="text"
               placeholder="กรองชื่อลูกค้านักปลูก..."
               value={searchCustomer}
               onChange={e => setSearchCustomer(e.target.value)}
-              className="w-full border border-slate-200 p-2 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50"
+              className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition"
             />
           </div>
 
           <div>
-            <label className="block text-slate-500 font-semibold mb-1">สถานะเรียกเก็บ</label>
+            <label className="block text-slate-505 font-bold mb-1">สถานะเรียกเก็บ</label>
             <select
               value={selectedStatus}
               onChange={e => setSelectedStatus(e.target.value as StatementStatus | 'ALL')}
-              className="w-full border border-slate-200 p-2 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50 font-medium text-slate-700"
+              className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition font-sans font-bold text-slate-700"
             >
               <option value="ALL">แสดงทั้งหมด (All States)</option>
               <option value="NOT_PAID">รอดำเนินการ (Not Paid)</option>
@@ -109,25 +117,25 @@ export default function Statement() {
           </div>
 
           <div>
-            <label className="block text-slate-500 font-semibold mb-1">วันที่ครบ Due Date</label>
+            <label className="block text-slate-505 font-bold mb-1">วันที่ครบ Due Date</label>
             <input
               type="date"
               value={searchDueDate}
               onChange={e => setSearchDueDate(e.target.value)}
-              className="w-full border border-slate-200 p-2 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50"
+              className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition font-mono text-slate-700"
             />
           </div>
         </div>
       </div>
 
       {/* Dues Listings Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-xs overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/20 flex justify-between items-center text-xs">
           <div>
-            <h4 className="font-bold text-slate-800 text-sm">รายการค่างวดเรียกชำระ (Statement Active Billings)</h4>
-            <p className="text-slate-400 mt-1">ยอดค่างวดแสดงขึ้นอัตราล่วงหน้า 15 วันก่อนถึงกำหนดดิวแต่ละงวด</p>
+            <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono">รายการค่างวดเรียกชำระ (Statement Active Billings)</h4>
+            <p className="text-slate-400 mt-0.5">ยอดค่างวดแสดงขึ้นอัตราล่วงหน้า 15 วันก่อนถึงกำหนดดิวแต่ละงวด</p>
           </div>
-          <span className="text-[10px] text-slate-400 font-bold bg-white px-2 py-1 rounded border">พบ {filteredSchedules.length} คิวค่างวด</span>
+          <span className="text-[10px] text-sky-700 font-bold bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100 font-mono">พบ {filteredSchedules.length} คิวค่างวด</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -135,7 +143,7 @@ export default function Statement() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <th className="p-4">เลขที่สัญญา</th>
-                <th className="p-4">ผู้กู้ / ลูกค้า</th>
+                <th className="p-4 font-sans">ผู้กู้ / ลูกค้า</th>
                 <th className="p-4 text-center">งวดที่</th>
                 <th className="p-4 text-center">วันครบดิวจ่าย</th>
                 <th className="p-4 text-right header-num">เงินต้นเรียกเก็บ (Principal)</th>
@@ -143,16 +151,16 @@ export default function Statement() {
                 <th className="p-4 text-right header-num">ภาษีมูลค่าเพิ่ม (VAT 7%)</th>
                 <th className="p-4 text-right header-num text-rose-500">เบี้ยปรับสะสม (Penalty)</th>
                 <th className="p-4 text-right header-num text-rose-500">ค่าติดตามทวงถาม (Collection)</th>
-                <th className="p-4 text-right header-num text-[#25348D]">ยอดรวมต้องชำระ (Total)</th>
+                <th className="p-4 text-right header-num text-sky-700">ยอดรวมต้องชำระ (Total)</th>
                 <th className="p-4 text-right header-num text-emerald-600">ชำระแล้วแล้ว</th>
                 <th className="p-4 text-center">สถานะ</th>
                 <th className="p-4 text-center">ออกใบแจ้งหนี้</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-600">
+            <tbody className="divide-y divide-slate-100 text-slate-600 font-sans">
               {filteredSchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="p-8 text-center text-slate-400">
+                  <td colSpan={13} className="p-8 text-center text-slate-400 font-sans">
                     ไม่พบรายการค้างชำระตามดิวหรือสถานะค่างวดที่เลือกในระบบขณะนี้
                   </td>
                 </tr>
@@ -161,7 +169,7 @@ export default function Statement() {
                   const parent = contracts.find(c => c.id === sch.contractId);
                   return (
                     <tr key={sch.id} className="hover:bg-slate-50/40 transition">
-                      <td className="p-4 font-mono font-bold text-[#213F9A] uppercase tracking-wider">{sch.contractId}</td>
+                      <td className="p-4 font-mono font-bold text-sky-600 uppercase tracking-wider">{sch.contractId}</td>
                       <td className="p-4 pr-1">
                         <div>
                           <span className="font-semibold text-slate-800 block">{parent ? parent.customerName : 'N/A'}</span>
@@ -169,7 +177,7 @@ export default function Statement() {
                         </div>
                       </td>
                       <td className="p-4 text-center">
-                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-extrabold">งวด {sch.termNumber}</span>
+                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-extrabold text-[10px]">งวด {sch.termNumber}</span>
                       </td>
                       <td className="p-4 text-center font-mono font-bold text-slate-600">{sch.dueDate}</td>
                       <td className="p-4 text-right font-mono font-semibold text-slate-700">{formatThb(sch.principalDue)}</td>
@@ -183,16 +191,16 @@ export default function Statement() {
                         {sch.trackingFeeDue > 0 ? formatThb(sch.trackingFeeDue) : '-'}
                       </td>
                       
-                      <td className="p-4 text-right font-mono font-extrabold text-[#25348D]">{formatThb(sch.totalDue)}</td>
+                      <td className="p-4 text-right font-mono font-extrabold text-sky-700 bg-sky-50/10">{formatThb(sch.totalDue)}</td>
                       <td className="p-4 text-right font-mono font-extrabold text-emerald-600">{formatThb(sch.totalPaid)}</td>
                       <td className="p-4 text-center">{getStatusBadge(sch.status)}</td>
                       
-                      <td className="p-4 text-center text-slate-300">
+                      <td className="p-4 text-center">
                         <button
                           onClick={() => handleOpenInvoice(sch)}
-                          className="p-1 px-2.5 bg-slate-100 hover:bg-[#25348D] hover:text-white rounded text-[#25348D] font-bold text-[10px] transition flex items-center justify-center space-x-1 mx-auto cursor-pointer"
+                          className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-600 hover:text-white rounded text-sky-750 font-bold text-[10px] transition flex items-center justify-center space-x-1 mx-auto cursor-pointer border border-sky-100"
                         >
-                          <Printer className="w-3.5 h-3.5" />
+                          <Printer className="w-3.5 h-3.5 text-inherit" />
                           <span>PDF</span>
                         </button>
                       </td>

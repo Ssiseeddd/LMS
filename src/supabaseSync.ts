@@ -15,19 +15,26 @@ export function mapContractToDb(c: Contract) {
     customer_name: c.customerName,
     customer_tax_id: c.customerTaxId,
     customer_phone: c.customerPhone,
+    customer_address: c.customerAddress || '',
     product_type: c.productType,
     credit_limit: c.creditLimit,
     interest_rate: c.interestRate,
     start_date: c.startDate,
-    term_months: c.termMonths,
-    due_day: c.dueDay,
+    term_months: c.termMonths !== undefined && c.termMonths !== null ? c.termMonths : null,
+    due_day: c.dueDay !== undefined && c.dueDay !== null ? c.dueDay : null,
     payment_frequency: c.paymentFrequency,
     service_fee: c.serviceFee,
     tree_cut_option: c.treeCutOption,
     outstanding_principal: c.outstandingPrincipal,
     disbursed_amount: c.disbursedAmount,
     status: c.status,
-    created_at: c.createdAt
+    created_at: c.createdAt,
+    planting_type: c.plantingType || null,
+    planting_area_rai: c.plantingAreaRai !== undefined ? c.plantingAreaRai : null,
+    planting_tree_count: c.plantingTreeCount !== undefined ? c.plantingTreeCount : null,
+    planting_province: c.plantingProvince || null,
+    planting_district: c.plantingDistrict || null,
+    planting_subdistrict: c.plantingSubdistrict || null
   };
 }
 
@@ -37,19 +44,26 @@ export function mapDbToContract(row: any): Contract {
     customerName: row.customer_name,
     customerTaxId: row.customer_tax_id,
     customerPhone: row.customer_phone || '',
+    customerAddress: row.customer_address || '',
     productType: row.product_type,
     creditLimit: Number(row.credit_limit || 0),
     interestRate: Number(row.interest_rate || 0),
     startDate: row.start_date,
-    termMonths: Number(row.term_months || 0),
-    dueDay: row.due_day,
+    termMonths: row.term_months !== null && row.term_months !== undefined ? Number(row.term_months) : undefined,
+    dueDay: row.due_day !== null && row.due_day !== undefined ? row.due_day : undefined,
     paymentFrequency: row.payment_frequency,
     serviceFee: Number(row.service_fee || 0),
     treeCutOption: !!row.tree_cut_option,
     outstandingPrincipal: Number(row.outstanding_principal || 0),
     disbursedAmount: Number(row.disbursed_amount || 0),
     status: row.status,
-    createdAt: row.created_at || new Date().toISOString()
+    createdAt: row.created_at || new Date().toISOString(),
+    plantingType: row.planting_type || undefined,
+    plantingAreaRai: row.planting_area_rai !== null && row.planting_area_rai !== undefined ? Number(row.planting_area_rai) : undefined,
+    plantingTreeCount: row.planting_tree_count !== null && row.planting_tree_count !== undefined ? Number(row.planting_tree_count) : undefined,
+    plantingProvince: row.planting_province || undefined,
+    plantingDistrict: row.planting_district || undefined,
+    plantingSubdistrict: row.planting_subdistrict || undefined
   };
 }
 

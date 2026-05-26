@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getRepayments, getContracts, recordRepayment } from '../dbStore';
-import { Repayment as RepaymentType, Contract, RepaymentAllocationItem } from '../types';
-import { Search, Plus, Download, Coins, Receipt, ArrowDownLeft, CheckCircle2, ListFilter, AlertCircle } from 'lucide-react';
+import { Repayment as RepaymentType, Contract } from '../types';
+import { Search, Plus, Download, Coins, Receipt, CheckCircle2, AlertCircle } from 'lucide-react';
 import DocViewerModal from './DocViewerModal';
 
 export default function Repayment() {
@@ -110,7 +110,7 @@ export default function Repayment() {
   return (
     <div className="space-y-6">
       {/* Search Bar Panel & Control buttons */}
-      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -119,7 +119,7 @@ export default function Repayment() {
               placeholder="ค้นหาตามรหัสสัญญาที่ชำระ..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50"
+              className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition font-sans"
             />
           </div>
           <div className="relative">
@@ -129,7 +129,7 @@ export default function Repayment() {
               placeholder="ค้นหาชื่อสมาชิกลูกหนี้..."
               value={searchName}
               onChange={e => setSearchName(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50"
+              className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 transition font-sans"
             />
           </div>
         </div>
@@ -137,15 +137,15 @@ export default function Repayment() {
         <div className="flex items-center space-x-2">
           <button
             onClick={handleExportCSV}
-            className="flex items-center space-x-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+            className="flex items-center space-x-1.5 px-4 py-2.5 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4 text-slate-500" />
             <span>ส่งออกข้อมูล (CSV)</span>
           </button>
           
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center space-x-1.5 px-4 py-2 bg-[#25348D] text-white rounded-lg text-xs font-semibold hover:bg-[#213F9A] transition shadow cursor-pointer"
+            className="flex items-center space-x-1.5 px-4 py-2.5 bg-sky-600 text-white rounded-lg text-xs font-bold hover:bg-sky-700 transition shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>บันทึกชำระค่างวด (Repay)</span>
@@ -155,18 +155,18 @@ export default function Repayment() {
 
       {/* Success Horizontal Cut Feedback Log Panel */}
       {showAllocationReceipt && lastAllocatedRepayment && (
-        <div className="bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-xl p-6 shadow-sm space-y-4 font-sans animate-fade-in">
+        <div className="bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-xl p-6 shadow-xs space-y-4 font-sans animate-fade-in">
           <div className="flex justify-between items-start border-b border-emerald-200 pb-3">
             <div className="flex items-center space-x-2.5">
               <CheckCircle2 className="w-6 h-6 text-emerald-600" />
               <div>
-                <h4 className="font-extrabold text-[#25348D] text-[15px]">ตัดยอดจัดชำระแนวนอน (Horizontal Allocation) สำเร็จ!</h4>
+                <h4 className="font-extrabold text-sky-800 text-[14px]">ตัดยอดจัดชำระแนวนอน (Horizontal Allocation) สำเร็จ!</h4>
                 <p className="text-xs text-slate-500 mt-0.5">เงินจำนวน <strong>{formatThb(lastAllocatedRepayment.amountPaid)}</strong> ได้รับจัดสรร term-by-term ตามลำดับเกรซพีเรียดพาร์ทเนอร์</p>
               </div>
             </div>
             <button
               onClick={() => setShowAllocationReceipt(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs font-bold font-mono text-slate-600 bg-white border rounded px-1.5 cursor-pointer"
+              className="text-slate-400 hover:text-slate-600 text-xs font-bold font-mono bg-white border border-slate-200 rounded px-2 py-1 cursor-pointer"
             >
               ซ่อน logs
             </button>
@@ -174,42 +174,42 @@ export default function Repayment() {
 
           {/* Table display of distribution details */}
           <div className="bg-white rounded-lg border border-emerald-200/50 overflow-hidden text-xs">
-            <div className="px-4 py-2 bg-emerald-100/40 border-b border-emerald-200/50 font-bold text-[#213F9A]">
+            <div className="px-4 py-2 bg-emerald-55/40 border-b border-emerald-200/50 font-bold text-sky-800">
               บันทึกลำดับแถวการชำระเงินต้นและดอกเบี้ย / เบี้ยปรับค้าง (Allocations breakdown)
             </div>
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 font-bold text-slate-500 border-b">
                   <th className="p-3">งวดที่ได้ชำระ (Term Number)</th>
-                  <th className="p-3 text-right">ตัดเบี้ยปรับ (Penalty)</th>
-                  <th className="p-3 text-right">ตัดค่าติดตาม (Collection Fee)</th>
-                  <th className="p-3 text-right">ตัดดอกเบี้ย (Interest)</th>
-                  <th className="p-3 text-right">ตัดปัดเศษเงินต้น (Principal)</th>
+                  <th className="p-4 text-right">ตัดเบี้ยปรับ (Penalty)</th>
+                  <th className="p-4 text-right">ตัดค่าติดตาม (Collection Fee)</th>
+                  <th className="p-4 text-right">ตัดดอกเบี้ย (Interest)</th>
+                  <th className="p-4 text-right">ตัดปัดเศษเงินต้น (Principal)</th>
                   <th className="p-3 text-right">ตัดหักภาษี (VAT 7%)</th>
                   <th className="p-3 text-right font-bold text-emerald-700">รวมถูกตัดสุทธิ (Subtotal)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600">
+              <tbody className="divide-y divide-slate-100 text-slate-600 font-mono">
                 {lastAllocatedRepayment.distributionDetails.map((item, idx) => (
                   <tr key={idx} className="hover:bg-teal-50/10">
-                    <td className="p-3 font-bold text-teal-900">งวดเรียกชำระที่ {item.termNumber}</td>
+                    <td className="p-3 font-bold text-teal-900 font-sans">งวดเรียกชำระที่ {item.termNumber}</td>
                     <td className="p-3 text-right text-rose-600 font-semibold">{item.penalty > 0 ? formatThb(item.penalty) : '-'}</td>
                     <td className="p-3 text-right text-rose-600 font-semibold">{item.trackingFee > 0 ? formatThb(item.trackingFee) : '-'}</td>
                     <td className="p-3 text-right text-emerald-600">{item.interest > 0 ? formatThb(item.interest) : '-'}</td>
                     <td className="p-3 text-right text-slate-800 font-semibold">{item.principal > 0 ? formatThb(item.principal) : '-'}</td>
                     <td className="p-3 text-right">{item.vat > 0 ? formatThb(item.vat) : '-'}</td>
-                    <td className="p-3 text-right font-bold text-emerald-700">{formatThb(item.total)}</td>
+                    <td className="p-3 text-right font-bold text-emerald-700 font-sans">{formatThb(item.total)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="flex justify-between items-center text-[10px] text-slate-400">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-[10px] text-slate-400 gap-2">
             <span>* ลำดับลำเลียงตัดเงิน: เบี้ยปรับงวด N &rarr; ค่าทวงถามงวด N &rarr; ดอกเบี้ยงวด N &rarr; เงินต้นงวด N &rarr; ไปงวดถัดไป N+1</span>
             <button
               onClick={() => handleOpenReceipt(lastAllocatedRepayment)}
-              className="px-3.5 py-1.5 bg-emerald-600 text-white rounded font-semibold hover:bg-emerald-700 text-xs transition cursor-pointer"
+              className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700 text-xs transition cursor-pointer self-start sm:self-auto"
             >
               ออกใบเสร็จรับเงินใบนี้ทันที
             </button>
@@ -218,36 +218,36 @@ export default function Repayment() {
       )}
 
       {/* Transaction History Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="px-6 py-4.5 border-b border-slate-150 bg-slate-50/50 flex justify-between items-center text-xs">
           <div>
-            <h4 className="font-bold text-slate-800 text-sm">ประวัติการรับชำระค่างวดสะสม (Repayments Log & Tax Invoices)</h4>
-            <p className="text-slate-400 mt-1">รายการสับยอดชำระและประทับเอกสารรับชำระจริงในระบบ</p>
+            <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono">ประวัติการรับชำระค่างวดสะสม (Repayments Log & Tax Invoices)</h4>
+            <p className="text-slate-400 mt-0.5 font-sans">รายการสับยอดชำระและประทับเอกสารรับชำระจริงในระบบ</p>
           </div>
-          <span className="text-[10px] text-slate-400 font-bold bg-white px-2 py-1 rounded border">รวม {filteredRepays.length} ธุรกรรม</span>
+          <span className="text-[10px] text-sky-700 font-bold bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100 font-mono font-bold">รวม {filteredRepays.length} ธุรกรรม</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                <th className="p-4">เลขที่ใบเสร็จ</th>
-                <th className="p-4">เลขที่สัญญา</th>
-                <th className="p-4">สมาชิกลูกหนี้</th>
-                <th className="p-4 text-center">วันที่ได้รับชำระ</th>
-                <th className="p-4 text-right">ตัดเบี้ยปรับ</th>
-                <th className="p-4 text-right">ตัดค่าติดตาม</th>
-                <th className="p-4 text-right">ตัดดอกเบี้ย</th>
-                <th className="p-4 text-right">ตัดเงินต้นค้าง</th>
-                <th className="p-4 text-right">ตัดภาษี VAT</th>
-                <th className="p-4 text-right font-bold text-[#25348D]">จำนวกระแสเงินฝากเข้ามา</th>
-                <th className="p-4 text-center">พิมพ์ใบกำกับ/ใบเสร็จ</th>
+              <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                <th className="px-3 py-3 border-r border-slate-200/30">เลขที่ใบเสร็จ</th>
+                <th className="px-3 py-3 border-r border-slate-200/30">เลขที่สัญญา</th>
+                <th className="px-3 py-3 font-sans border-r border-slate-200/30">สมาชิกลูกหนี้</th>
+                <th className="px-3 py-3 text-center border-r border-slate-200/30">วันที่ได้รับชำระ</th>
+                <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดเบี้ยปรับ</th>
+                <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดค่าติดตาม</th>
+                <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดดอกเบี้ย</th>
+                <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดเงินต้นค้าง</th>
+                <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดภาษี VAT</th>
+                <th className="px-3 py-3 text-right bg-sky-50/40 text-sky-700 font-bold border-r border-slate-200/30">จำนวกระแสเงินฝากเข้ามา</th>
+                <th className="px-3 py-3 text-center">พิมพ์ใบกำกับ/ใบเสร็จ</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-600">
+            <tbody className="divide-y divide-slate-150 text-slate-650 font-sans">
               {filteredRepays.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-400">
+                  <td colSpan={11} className="p-8 text-center text-slate-400 font-sans">
                     ไม่พบรายการประวัติการชำระค่างวดอ้างอิงขณะนี้ในพอร์ตระบบ
                   </td>
                 </tr>
@@ -255,35 +255,35 @@ export default function Repayment() {
                 filteredRepays.map(r => {
                   const parent = contracts.find(c => c.id === r.contractId);
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50/40 transition">
-                      <td className="p-4 font-mono font-bold text-slate-700">{r.receiptNo}</td>
-                      <td className="p-4 font-mono font-bold text-[#213F9A] uppercase tracking-wider">{r.contractId}</td>
-                      <td className="p-4 font-semibold text-slate-800">{parent ? parent.customerName : 'N/A'}</td>
-                      <td className="p-4 text-center font-mono font-bold text-slate-500">{r.paymentDate}</td>
+                    <tr key={r.id} className="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-0 hover:text-slate-900">
+                      <td className="px-3 py-2.5 font-mono font-bold text-slate-700 border-r border-slate-100/40">{r.receiptNo}</td>
+                      <td className="px-3 py-2.5 font-mono font-bold text-sky-600 uppercase tracking-wider border-r border-slate-100/40">{r.contractId}</td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-800 border-r border-slate-100/40">{parent ? parent.customerName : 'N/A'}</td>
+                      <td className="px-3 py-2.5 text-center font-mono font-normal text-slate-600 border-r border-slate-100/40">{r.paymentDate}</td>
                       
-                      <td className="p-4 text-right font-mono text-rose-500 font-medium">
+                      <td className="px-3 py-2.5 text-right font-mono text-rose-500 font-medium border-r border-slate-100/40">
                         {r.appliedPenalty > 0 ? formatThb(r.appliedPenalty) : '-'}
                       </td>
-                      <td className="p-4 text-right font-mono text-rose-500 font-medium">
+                      <td className="px-3 py-2.5 text-right font-mono text-rose-500 font-medium border-r border-slate-100/40">
                         {r.appliedTrackingFee > 0 ? formatThb(r.appliedTrackingFee) : '-'}
                       </td>
-                      <td className="p-4 text-right font-mono font-medium text-emerald-600">
+                      <td className="px-3 py-2.5 text-right font-mono font-medium text-emerald-600 border-r border-slate-100/40">
                         {r.appliedInterest > 0 ? formatThb(r.appliedInterest) : '-'}
                       </td>
-                      <td className="p-4 text-right font-mono font-medium text-slate-800">
+                      <td className="px-3 py-2.5 text-right font-mono font-medium text-slate-800 border-r border-slate-100/40">
                         {r.appliedPrincipal > 0 ? formatThb(r.appliedPrincipal) : '-'}
                       </td>
-                      <td className="p-4 text-right font-mono text-slate-600">
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-600 border-r border-slate-100/40">
                         {r.appliedVat > 0 ? formatThb(r.appliedVat) : '-'}
                       </td>
                       
-                      <td className="p-4 text-right font-mono font-extrabold text-[#25348D]">{formatThb(r.amountPaid)}</td>
-                      <td className="p-4 text-center">
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-sky-750 bg-sky-50/20 border-r border-slate-100/40">{formatThb(r.amountPaid)}</td>
+                      <td className="px-3 py-2.5 text-center">
                         <button
                           onClick={() => handleOpenReceipt(r)}
-                          className="p-1 px-3 bg-indigo-50 hover:bg-[#25348D] hover:text-white text-[#25348D] rounded font-bold text-[10px] transition flex items-center justify-center space-x-1 mx-auto cursor-pointer"
+                          className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-600 hover:text-white text-sky-700 border border-sky-100 rounded font-bold text-[10px] transition flex items-center justify-center space-x-1 mx-auto cursor-pointer"
                         >
-                          <Receipt className="w-3.5 h-3.5" />
+                          <Receipt className="w-3.5 h-3.5 text-inherit" />
                           <span>ใบเสร็จ / VAT</span>
                         </button>
                       </td>
@@ -298,16 +298,16 @@ export default function Repayment() {
 
       {/* Repayments Registration Action Drawer Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-100 bg-[#25348D] rounded-t-xl text-white flex justify-between items-center">
-              <div className="flex items-center space-x-2">
-                <Coins className="w-5 h-5 text-[#41C3DB]" />
-                <h3 className="font-semibold text-base">บันทึกรับชำระหนี้ค่างวดและเบี้ยปรนเปรอหนี้ค้าง</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto font-sans">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full flex flex-col border border-slate-100 animate-fade-in">
+            <div className="px-6 py-4 border-b border-sky-100 bg-sky-600 rounded-t-xl text-white flex justify-between items-center">
+              <div className="flex items-center space-x-2 font-mono">
+                <Coins className="w-5 h-5 text-sky-100" />
+                <h3 className="font-extrabold text-sm uppercase tracking-wide">บันทึกรับชำระหนี้ค่างวด</h3>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-white hover:bg-white/10 rounded p-1 transition cursor-pointer"
+                className="text-white hover:bg-white/10 rounded-full p-1 transition cursor-pointer text-sm w-7 h-7 flex items-center justify-center"
               >
                 ✕
               </button>
@@ -315,12 +315,12 @@ export default function Repayment() {
 
             <form onSubmit={handleRepaySubmit} className="p-6 space-y-5 text-xs">
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">เลือกหมายเลขทะเบียนสัญญาลูกหนี้ *</label>
+                <label className="block text-slate-600 font-bold mb-1">เลือกหมายเลขทะเบียนสัญญาลูกหนี้ *</label>
                 <select
                   required
                   value={selectedContractId}
                   onChange={e => setSelectedContractId(e.target.value)}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50 font-bold text-slate-800"
+                  className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-bold text-slate-850"
                 >
                   <option value="">-- กรุณาเลือกบัญชีสัญญาที่ต้องการตัดยอดชำระ --</option>
                   {contracts
@@ -335,7 +335,7 @@ export default function Repayment() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-600 font-semibold mb-1">จำนวนยอดเงินที่ส่งชำระ (บิลถอนฝาก) *</label>
+                  <label className="block text-slate-600 font-bold mb-1">จำนวนยอดเงินที่ส่งชำระ (THB) *</label>
                   <input
                     type="number"
                     required
@@ -343,18 +343,18 @@ export default function Repayment() {
                     min="1"
                     value={amountPaid}
                     onChange={e => setAmountPaid(Number(e.target.value))}
-                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50 font-bold text-slate-800 text-sm"
+                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-bold text-slate-800 text-sm font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 font-semibold mb-1">วันที่ได้รับเงินชำระโอนจริง *</label>
+                  <label className="block text-slate-600 font-bold mb-1">วันที่ได้รับเงินชำระโอนจริง *</label>
                   <input
                     type="date"
                     required
                     value={paymentDate}
                     onChange={e => setPaymentDate(e.target.value)}
-                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-[#213F9A] bg-slate-50/50 font-semibold text-slate-700"
+                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-semibold font-mono text-slate-800"
                   />
                 </div>
               </div>
@@ -371,17 +371,17 @@ export default function Repayment() {
                 </p>
               </div>
 
-              <div className="flex justify-end space-x-3 border-t border-slate-100 pt-5">
+              <div className="flex justify-end space-x-3 border-t border-slate-150 pt-5 font-sans">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4.5 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+                  className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-bold hover:bg-slate-50 transition cursor-pointer"
                 >
                   ออก
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition cursor-pointer shadow-md"
+                  className="px-5 py-2.5 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700 transition cursor-pointer shadow-xs"
                 >
                   บันทึกสับยอดรับชำระเงินค่างวด
                 </button>

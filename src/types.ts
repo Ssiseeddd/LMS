@@ -18,15 +18,22 @@ export interface Contract {
   customerName: string;
   customerTaxId: string;
   customerPhone: string;
+  customerAddress?: string; // ที่อยู่ของลูกค้า
   productType: ProductType;
   creditLimit: number;
   interestRate: number; // Effective rate per year, e.g. 10 for 10%
   startDate: string; // YYYY-MM-DD
-  termMonths: number; // e.g. 12, 24, 60
-  dueDay: 5 | 15 | 25;
+  termMonths?: number; // e.g. 12, 24, 60
+  dueDay?: 5 | 15 | 25;
   paymentFrequency: PaymentFrequency; // 'MONTHLY' or 'ANNUAL' (groups planting / กลุ่มปลูก)
   serviceFee: number; // For ANNUAL (กลุ่มปลูก)
   treeCutOption: boolean; // For ANNUAL, whether they can draw the final tree-cutting batch
+  plantingType?: 'RESERVE' | 'NON_RESERVE'; // ประเภท (RESERVE/NON_RESERVE)
+  plantingAreaRai?: number; // จำนวนไร่
+  plantingTreeCount?: number; // จำนวนต้น
+  plantingProvince?: string; // จังหวัด
+  plantingDistrict?: string; // อำเภอ
+  plantingSubdistrict?: string; // ตำบล
   outstandingPrincipal: number; // Outstanding balance
   disbursedAmount: number; // Total amount drawn so far
   status: 'ACTIVE' | 'CLOSED' | 'DEFAULT';

@@ -17,6 +17,7 @@ const DEFAULT_CONTRACTS: Contract[] = [
     customerName: 'นายพูนศักดิ์ รุ่งเรือง (Somyot Truck)',
     customerTaxId: '3101294829103',
     customerPhone: '081-234-5678',
+    customerAddress: '99/5 หมู่ 4 ถนนสุวรรณศร ตำบลเมืองเก่า อำเภอกบินทร์บุรี จังหวัดปราจีนบุรี 25110',
     productType: 'HP',
     creditLimit: 120000,
     interestRate: 8,
@@ -36,6 +37,7 @@ const DEFAULT_CONTRACTS: Contract[] = [
     customerName: 'นางสาวสิริมา ประเสริฐดี',
     customerTaxId: '4221008273641',
     customerPhone: '089-876-5432',
+    customerAddress: '123/4 ซอยลาดพร้าว 101 แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพมหานคร 10310',
     productType: 'LOAN',
     creditLimit: 80000,
     interestRate: 12,
@@ -55,6 +57,7 @@ const DEFAULT_CONTRACTS: Contract[] = [
     customerName: 'กลุ่มวิสาหกิจชุมชนปลูกป่า ท่าหลวง (กลุ่มปลูก)',
     customerTaxId: '0994002817264',
     customerPhone: '036-777-1111',
+    customerAddress: 'กลุ่มวิสาหกิจชุมชนปลูกป่า ท่าหลวง หมู่ที่ 1 ตำบลท่าหลวง อำเภอท่าหลวง จังหวัดลพบุรี 15230',
     productType: 'LOAN',
     creditLimit: 130000,
     interestRate: 10,
@@ -64,6 +67,12 @@ const DEFAULT_CONTRACTS: Contract[] = [
     paymentFrequency: 'ANNUAL',
     serviceFee: 500, // Service fee full limit
     treeCutOption: true,
+    plantingType: 'RESERVE',
+    plantingAreaRai: 25,
+    plantingTreeCount: 5000,
+    plantingProvince: 'ลพบุรี',
+    plantingDistrict: 'ท่าหลวง',
+    plantingSubdistrict: 'ท่าหลวง',
     disbursedAmount: 4000, // 2000 + 2000 drawn in Year 1
     outstandingPrincipal: 4000,
     status: 'ACTIVE',
@@ -263,7 +272,25 @@ export function saveSystemParameters(params: SystemParameters) {
 
 export function getContracts(): Contract[] {
   initializeDB();
-  return JSON.parse(localStorage.getItem('lms_contracts') || '[]');
+  const list = JSON.parse(localStorage.getItem('lms_contracts') || '[]');
+  let changed = false;
+  const updated = list.map((c: any) => {
+    if (!c.customerAddress) {
+      const foundDef = DEFAULT_CONTRACTS.find(d => d.id === c.id);
+      if (foundDef) {
+        c.customerAddress = foundDef.customerAddress;
+        changed = true;
+      } else {
+        c.customerAddress = '-';
+        changed = true;
+      }
+    }
+    return c;
+  });
+  if (changed) {
+    localStorage.setItem('lms_contracts', JSON.stringify(updated));
+  }
+  return updated;
 }
 
 export function getDisbursements(): Disbursement[] {
@@ -550,19 +577,26 @@ CREATE TABLE public.contracts (
     customer_name VARCHAR(255) NOT NULL,
     customer_tax_id VARCHAR(50) NOT NULL,
     customer_phone VARCHAR(50),
+    customer_address TEXT,
     product_type product_type NOT NULL,
     credit_limit NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     interest_rate NUMERIC(5, 2) NOT NULL,
     start_date DATE NOT NULL,
-    term_months INT NOT NULL,
-    due_day INT NOT NULL CHECK (due_day IN (5, 15, 25)),
+    term_months INT,
+    due_day INT CHECK (due_day IS NULL OR due_day IN (5, 15, 25)),
     payment_frequency payment_frequency NOT NULL DEFAULT 'MONTHLY',
     service_fee NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     tree_cut_option BOOLEAN NOT NULL DEFAULT FALSE,
     outstanding_principal NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     disbursed_amount NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     status contract_status NOT NULL DEFAULT 'ACTIVE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    planting_type VARCHAR(50),
+    planting_area_rai NUMERIC(15, 2),
+    planting_tree_count INT,
+    planting_province VARCHAR(100),
+    planting_district VARCHAR(100),
+    planting_subdistrict VARCHAR(100)
 );
 
 -- 3. Create disbursements table
