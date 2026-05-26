@@ -1,5 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Fetch server credentials on start to sync local state
+export async function fetchServerSupabaseConfig() {
+  try {
+    const res = await fetch('/api/supabase-config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url && data.key) {
+        localStorage.setItem('lms_supabase_url', data.url.trim());
+        localStorage.setItem('lms_supabase_anon_key', data.key.trim());
+        return { url: data.url, key: data.key };
+      }
+    }
+  } catch (err) {
+    console.error('Failed to pre-fetch server Supabase credentials:', err);
+  }
+  return null;
+}
+
+export async function saveSupabaseConfigToServer(url: string, key: string) {
+  try {
+    await fetch('/api/supabase-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url.trim(), key: key.trim() })
+    });
+  } catch (err) {
+    console.error('Failed to persist Supabase config to server:', err);
+  }
+}
+
+export async function clearSupabaseConfigOnServer() {
+  try {
+    await fetch('/api/supabase-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: '', key: '' })
+    });
+  } catch (err) {
+    console.error('Failed to clear Supabase config on server:', err);
+  }
+}
+
 // Load initial values from environment or localStorage
 export function getSavedSupabaseConfig() {
   const url = localStorage.getItem('lms_supabase_url') || (import.meta as any).env.VITE_SUPABASE_URL || '';
@@ -13,12 +55,16 @@ export function saveSupabaseConfig(url: string, key: string, autoSync: boolean) 
   localStorage.setItem('lms_supabase_url', url.trim());
   localStorage.setItem('lms_supabase_anon_key', key.trim());
   localStorage.setItem('lms_supabase_auto_sync', String(autoSync));
+  // Fire-and-forget save to backend
+  saveSupabaseConfigToServer(url, key);
 }
 
 export function clearSupabaseConfig() {
   localStorage.removeItem('lms_supabase_url');
   localStorage.removeItem('lms_supabase_anon_key');
   localStorage.removeItem('lms_supabase_auto_sync');
+  // Fire-and-forget clear on backend
+  clearSupabaseConfigOnServer();
 }
 
 // Get client instance dynamically based on saved credentials

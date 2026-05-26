@@ -16,7 +16,8 @@ import {
   saveSupabaseConfig, 
   clearSupabaseConfig, 
   getSupabaseClient, 
-  testSupabaseConnection 
+  testSupabaseConnection,
+  fetchServerSupabaseConfig
 } from './supabaseClient';
 import { pushLocalDataToSupabase, pullSupabaseDataToLocal } from './supabaseSync';
 import { 
@@ -60,16 +61,24 @@ export default function App() {
     initializeDB();
     runDailyAudit();
 
-    // Load initial config
-    const config = getSavedSupabaseConfig();
-    setSupabaseUrl(config.url);
-    setSupabaseKey(config.key);
-    setAutoSync(config.autoSync);
-    
-    if (config.url && config.key) {
-      // Auto test connection on launch
-      testConnection(config.url, config.key, config.autoSync);
+    // Load initial config asynchronously from server, falling back to localStorage/env
+    async function initSupabase() {
+      const serverConfig = await fetchServerSupabaseConfig();
+      const config = getSavedSupabaseConfig();
+      
+      const urlToUse = serverConfig?.url || config.url;
+      const keyToUse = serverConfig?.key || config.key;
+
+      setSupabaseUrl(urlToUse);
+      setSupabaseKey(keyToUse);
+      setAutoSync(config.autoSync);
+      
+      if (urlToUse && keyToUse) {
+        testConnection(urlToUse, keyToUse, config.autoSync);
+      }
     }
+
+    initSupabase();
   }, []);
 
   const testConnection = async (url: string, key: string, syncVal: boolean) => {

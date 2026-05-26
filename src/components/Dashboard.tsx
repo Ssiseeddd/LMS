@@ -23,6 +23,8 @@ interface ChartDataPoint {
   date: string;
   limit: number;
   outstanding: number;
+  periodLimit?: number;
+  periodOutstanding?: number;
 }
 
 function SvgAreaChart({ 
@@ -40,9 +42,18 @@ function SvgAreaChart({
   title: string; 
   badgeLabel?: string;
 }) {
+  const columnColor = strokeColor === '#10B981' ? '#A7F3D0'
+                    : strokeColor === '#8B5CF6' ? '#C7D2FE'
+                    : strokeColor === '#1463F3' ? '#93C5FD'
+                    : '#CBD5E1';
+
+  // Determine label texts dynamically based on key
+  const periodLabelText = dataKey === 'limit' ? 'ทำสัญญารายงวด' : 'ยอดเบิกใช้ใหม่';
+  const cumulativeLabelText = dataKey === 'limit' ? 'วงเงินสะสม' : 'ยอดคงเหลือสะสม';
+
   const chartOptions: any = {
     chart: {
-      type: 'area',
+      type: 'line', // Mix-charts in ApexCharts typically set the base type to 'line'
       height: 180,
       toolbar: {
         show: false
@@ -57,20 +68,22 @@ function SvgAreaChart({
     },
     stroke: {
       curve: 'smooth',
-      width: 2,
-      colors: [strokeColor]
+      width: [0, 2], // 0 width for the column bars, 2px for the area line
+      colors: [columnColor, strokeColor]
     },
     fill: {
-      type: 'gradient',
-      colors: [strokeColor],
+      type: ['solid', 'gradient'],
+      opacity: [1.0, 0.25],
+      colors: [columnColor, strokeColor],
       gradient: {
         shadeIntensity: 1,
+        inverseColors: false,
         opacityFrom: 0.25,
         opacityTo: 0.05,
         stops: [0, 90, 100]
       }
     },
-    colors: [strokeColor],
+    colors: [columnColor, strokeColor],
     xaxis: {
       categories: data.map(d => d.date),
       labels: {
@@ -87,27 +100,81 @@ function SvgAreaChart({
         show: false
       }
     },
-    yaxis: {
-      labels: {
-        formatter: (val: any) => {
-          if (val === null || val === undefined) return '0';
-          return val >= 1000000 
-            ? `${(val / 1000000).toFixed(1)}M` 
-            : val >= 1000 
-              ? `${(val / 1000).toFixed(0)}K` 
-              : val.toFixed(0);
+    yaxis: [
+      {
+        title: {
+          text: periodLabelText,
+          style: {
+            color: '#64748B',
+            fontSize: '9px',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600
+          }
         },
-        style: {
-          colors: '#94A3B8',
-          fontSize: '10px',
-          fontWeight: 500
+        labels: {
+          formatter: (val: any) => {
+            if (val === null || val === undefined) return '0';
+            return val >= 1000000 
+              ? `${(val / 1000000).toFixed(1)}M` 
+              : val >= 1000 
+                ? `${(val / 1000).toFixed(0)}K` 
+                : val.toFixed(0);
+          },
+          style: {
+            colors: '#94A3B8',
+            fontSize: '9px',
+            fontFamily: 'Inter, sans-serif'
+          }
+        },
+        axisBorder: {
+          show: true,
+          color: '#F1F5F9'
         }
+      },
+      {
+        opposite: true,
+        title: {
+          text: cumulativeLabelText,
+          style: {
+            color: strokeColor,
+            fontSize: '9px',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600
+          }
+        },
+        labels: {
+          formatter: (val: any) => {
+            if (val === null || val === undefined) return '0';
+            return val >= 1000000 
+              ? `${(val / 1000000).toFixed(1)}M` 
+              : val >= 1000 
+                ? `${(val / 1000).toFixed(0)}K` 
+                : val.toFixed(0);
+          },
+          style: {
+            colors: strokeColor,
+            fontSize: '9px',
+            fontFamily: 'Inter, sans-serif'
+          }
+        },
+        axisBorder: {
+          show: true,
+          color: strokeColor
+        }
+      }
+    ],
+    plotOptions: {
+      bar: {
+        columnWidth: '40%',
+        borderRadius: 4
       }
     },
     tooltip: {
       theme: 'light',
+      shared: true,
+      intersect: false,
       y: {
-        formatter: (val: any) => `${val.toLocaleString('th-TH')} บาท`
+        formatter: (val: any) => `${val !== undefined && val !== null ? Math.round(val).toLocaleString('th-TH') : 0} บาท`
       }
     },
     grid: {
@@ -119,8 +186,19 @@ function SvgAreaChart({
         }
       }
     },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+      fontSize: '10px',
+      labels: {
+        colors: '#64748B'
+      },
+      markers: {
+        radius: 4
+      }
+    },
     markers: {
-      size: 4,
+      size: [0, 4], // 0 for bar series, 4 for area line series
       colors: ['#FFFFFF'],
       strokeColors: strokeColor,
       strokeWidth: 2,
@@ -130,10 +208,18 @@ function SvgAreaChart({
     }
   };
 
-  const series = [{
-    name: title,
-    data: data.map(d => d[dataKey])
-  }];
+  const series = [
+    {
+      name: periodLabelText,
+      type: 'column',
+      data: data.map(d => dataKey === 'limit' ? (d.periodLimit || 0) : (d.periodOutstanding || 0))
+    },
+    {
+      name: cumulativeLabelText,
+      type: 'area',
+      data: data.map(d => d[dataKey] || 0)
+    }
+  ];
 
   const latestVal = data.length > 0 ? data[data.length - 1][dataKey] : 0;
 
@@ -156,9 +242,10 @@ function SvgAreaChart({
 
         <div className="pt-2 h-[190px]">
           <Chart
+            key={`mix-chart-${dataKey}-${title}-${data.length}-${data.map(d => d.date).join(',')}`}
             options={chartOptions}
             series={series}
-            type="area"
+            type="line"
             height="180"
           />
         </div>
@@ -256,6 +343,7 @@ function BeautifulDoughnut({
           {/* Apex Donut Chart */}
           <div className="relative w-[180px] h-[180px] flex-shrink-0 flex items-center justify-center">
             <Chart
+              key={`donut-${title}-${segments.map(s => s.label).join(',')}-${segments.map(s => s.amount).join(',')}`}
               options={chartOptions}
               series={series}
               type="donut"
@@ -293,20 +381,20 @@ const getAggregatedContractData = (contractsList: Contract[], unit: 'YEAR' | 'QU
   if (contractsList.length === 0) {
     if (unit === 'YEAR') {
       return [
-        { date: '2025', limit: 120000, outstanding: 101200 },
-        { date: '2026', limit: 330000, outstanding: 178700 }
+        { date: '2025', limit: 120000, outstanding: 101200, periodLimit: 120000, periodOutstanding: 101200 },
+        { date: '2026', limit: 330000, outstanding: 178700, periodLimit: 210000, periodOutstanding: 77500 }
       ];
     } else if (unit === 'QUARTER') {
       return [
-        { date: 'Q1/25', limit: 120000, outstanding: 101200 },
-        { date: 'Q2/25', limit: 200000, outstanding: 174700 },
-        { date: 'Q1/26', limit: 330000, outstanding: 178700 }
+        { date: 'Q1/25', limit: 120000, outstanding: 101200, periodLimit: 120000, periodOutstanding: 101200 },
+        { date: 'Q2/25', limit: 200000, outstanding: 174700, periodLimit: 80000, periodOutstanding: 73500 },
+        { date: 'Q1/26', limit: 330000, outstanding: 178700, periodLimit: 130000, periodOutstanding: 4000 }
       ];
     } else {
       return [
-        { date: '01/26', limit: 120000, outstanding: 101200 },
-        { date: '03/26', limit: 200000, outstanding: 174700 },
-        { date: '05/26', limit: 330000, outstanding: 178700 }
+        { date: '01/26', limit: 120000, outstanding: 101200, periodLimit: 120000, periodOutstanding: 101200 },
+        { date: '03/26', limit: 200000, outstanding: 174700, periodLimit: 80000, periodOutstanding: 73500 },
+        { date: '05/26', limit: 330000, outstanding: 178700, periodLimit: 130000, periodOutstanding: 4000 }
       ];
     }
   }
@@ -373,7 +461,9 @@ const getAggregatedContractData = (contractsList: Contract[], unit: 'YEAR' | 'QU
     return {
       date: displayLabel,
       limit: currentLimitSum,
-      outstanding: currentOutSum
+      outstanding: currentOutSum,
+      periodLimit: map[periodKey].limit,
+      periodOutstanding: map[periodKey].outstanding
     };
   });
 
@@ -384,7 +474,7 @@ const getAggregatedContractData = (contractsList: Contract[], unit: 'YEAR' | 'QU
     else baselineLabel = '01/25';
     
     return [
-      { date: baselineLabel, limit: 0, outstanding: 0 },
+      { date: baselineLabel, limit: 0, outstanding: 0, periodLimit: 0, periodOutstanding: 0 },
       { ...timeline[0] }
     ];
   }
