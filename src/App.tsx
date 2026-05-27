@@ -46,7 +46,7 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Syncing states
-  const [isInitialSyncing, setIsInitialSyncing] = useState(false);
+  const [isInitialSyncing, setIsInitialSyncing] = useState(true);
 
   // Supabase states
   const [supabaseUrl, setSupabaseUrl] = useState('');

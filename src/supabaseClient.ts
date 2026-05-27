@@ -1,10 +1,16 @@
 /// <reference types="vite/client" />
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// Determine if there is a background server to query or if we are fully static on a CDN/Vercel
+const isBackendAvailable = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname.endsWith('run.app')
+);
 
 // Fetch server credentials on start to sync local state
 export async function fetchServerSupabaseConfig() {
-  // If running on Vercel, skip call to backend to avoid 404 network fetch logs
-  if (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('vercel'))) {
+  if (!isBackendAvailable) {
     return null;
   }
   try {
@@ -32,6 +38,9 @@ export async function fetchServerSupabaseConfig() {
 }
 
 export async function saveSupabaseConfigToServer(url: string, key: string) {
+  if (!isBackendAvailable) {
+    return;
+  }
   try {
     await fetch('/api/db-config', {
       method: 'POST',
@@ -44,6 +53,9 @@ export async function saveSupabaseConfigToServer(url: string, key: string) {
 }
 
 export async function clearSupabaseConfigOnServer() {
+  if (!isBackendAvailable) {
+    return;
+  }
   try {
     await fetch('/api/db-config', {
       method: 'POST',
@@ -83,17 +95,29 @@ export function clearSupabaseConfig() {
   clearSupabaseConfigOnServer();
 }
 
+// Keep a cached instance of Supabase Client to avoid multiple concurrent GoTrue Client instances
+let cachedClient: SupabaseClient | null = null;
+let cachedUrl = '';
+let cachedKey = '';
+
 // Get client instance dynamically based on saved credentials
 export function getSupabaseClient() {
   const { url, key } = getSavedSupabaseConfig();
   if (!url || !key) return null;
   
+  if (cachedClient && cachedUrl === url && cachedKey === key) {
+    return cachedClient;
+  }
+  
   try {
-    return createClient(url, key, {
+    cachedUrl = url;
+    cachedKey = key;
+    cachedClient = createClient(url, key, {
       auth: {
         persistSession: false
       }
     });
+    return cachedClient;
   } catch (err) {
     console.error('Failed to initialize Supabase client:', err);
     return null;

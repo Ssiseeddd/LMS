@@ -42,6 +42,12 @@ function SvgAreaChart({
   title: string; 
   badgeLabel?: string;
 }) {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
   const columnColor = strokeColor === '#10B981' ? '#A7F3D0'
                     : strokeColor === '#8B5CF6' ? '#C7D2FE'
                     : strokeColor === '#1463F3' ? '#93C5FD'
@@ -241,13 +247,15 @@ function SvgAreaChart({
         </div>
 
         <div className="pt-2 h-[190px]">
-          <Chart
-            key={`mix-chart-${dataKey}-${title}-${data.length}-${data.map(d => d.date).join(',')}`}
-            options={chartOptions}
-            series={series}
-            type="line"
-            height="180"
-          />
+          {isMounted && (
+            <Chart
+              key={`mix-chart-${dataKey}-${title}-${data.length}-${data.map(d => d.date).join(',')}`}
+              options={chartOptions}
+              series={series}
+              type="line"
+              height="180"
+            />
+          )}
         </div>
       </div>
       
@@ -276,6 +284,12 @@ function BeautifulDoughnut({
   centerValueLabel: string;
   centerValueAmount: string;
 }) {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
   const chartOptions: any = {
     chart: {
       type: 'donut',
@@ -340,14 +354,16 @@ function BeautifulDoughnut({
         <div className="flex flex-col sm:flex-row items-center justify-around gap-6 py-2">
           {/* Apex Donut Chart */}
           <div className="relative w-[180px] h-[180px] flex-shrink-0 flex items-center justify-center">
-            <Chart
-              key={`donut-${title}-${segments.map(s => s.label).join(',')}-${segments.map(s => s.amount).join(',')}`}
-              options={chartOptions}
-              series={series}
-              type="donut"
-              width="180"
-              height="180"
-            />
+            {isMounted && (
+              <Chart
+                key={`donut-${title}-${segments.map(s => s.label).join(',')}-${segments.map(s => s.amount).join(',')}`}
+                options={chartOptions}
+                series={series}
+                type="donut"
+                width="180"
+                height="180"
+              />
+            )}
           </div>
 
           {/* Legend Items */}
