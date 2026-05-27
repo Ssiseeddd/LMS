@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 
 // Fetch server credentials on start to sync local state
 export async function fetchServerSupabaseConfig() {
+  // If running on Vercel, skip call to backend to avoid 404 network fetch logs
+  if (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('vercel'))) {
+    return null;
+  }
   try {
     const res = await fetch('/api/db-config', {
       headers: {
@@ -51,10 +55,13 @@ export async function clearSupabaseConfigOnServer() {
   }
 }
 
+const DEFAULT_SUPABASE_URL = 'https://zdsbtfvhxymansgocznp.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkc2J0ZnZoeHltYW5zZ29jem5wIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQzMzI0OSwiZXhwIjoyMDk1MDA5MjQ5fQ.3a6ySL6EAw7CVXF-TXo-GRVqPFwduS0juuZeR8s2msc';
+
 // Load initial values from environment or localStorage
 export function getSavedSupabaseConfig() {
-  const url = localStorage.getItem('lms_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
-  const key = localStorage.getItem('lms_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const url = localStorage.getItem('lms_supabase_url') || import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const key = localStorage.getItem('lms_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
   const autoSync = localStorage.getItem('lms_supabase_auto_sync') !== 'false'; // default to true if keys present
   
   return { url, key, autoSync };
