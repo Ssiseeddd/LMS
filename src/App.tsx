@@ -45,6 +45,9 @@ export default function App() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  // Syncing states
+  const [isInitialSyncing, setIsInitialSyncing] = useState(false);
+
   // Supabase states
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
@@ -63,6 +66,7 @@ export default function App() {
 
     // Load initial config asynchronously from server, falling back to localStorage/env
     async function initSupabase() {
+      setIsInitialSyncing(true);
       const serverConfig = await fetchServerSupabaseConfig();
       const config = getSavedSupabaseConfig();
       
@@ -74,8 +78,9 @@ export default function App() {
       setAutoSync(config.autoSync);
       
       if (urlToUse && keyToUse) {
-        testConnection(urlToUse, keyToUse, config.autoSync);
+        await testConnection(urlToUse, keyToUse, config.autoSync);
       }
+      setIsInitialSyncing(false);
     }
 
     initSupabase();
@@ -95,6 +100,16 @@ export default function App() {
           setConnectionStatus('connected');
           setConnectionMessage(result.message);
           setMissingTables([]);
+          
+          // Auto sync database to local storage
+          try {
+            const client = getSupabaseClient();
+            if (client) {
+              await pullSupabaseDataToLocal(client);
+            }
+          } catch (syncErr) {
+            console.error('Auto loading pull failed:', syncErr);
+          }
         }
         saveSupabaseConfig(url, key, syncVal);
       } else {
@@ -115,6 +130,10 @@ export default function App() {
       return;
     }
     await testConnection(supabaseUrl, supabaseKey, autoSync);
+    // Silent delay and clean page reload to refresh states for all views
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
   };
 
   const handleDisconnect = () => {
@@ -467,12 +486,26 @@ export default function App() {
 
         {/* Main Body Stage Area */}
         <main className="flex-grow p-4 sm:p-5 lg:p-6 overflow-y-auto bg-[#F4F5F7]">
-          {activeTab === 'dashboard' && <Dashboard />}
-          {activeTab === 'input' && <InputContract />}
-          {activeTab === 'disbursement' && <Disbursement />}
-          {activeTab === 'statement' && <Statement />}
-          {activeTab === 'repayment' && <Repayment />}
-          {activeTab === 'parameters' && <Parameters />}
+          {isInitialSyncing ? (
+            <div className="h-full min-h-[350px] flex flex-col items-center justify-center space-y-4 font-sans py-16">
+              <div className="w-12 h-12 rounded-2xl bg-[#1463F3]/10 flex items-center justify-center border border-[#1463F3]/20 text-[#1463F3]">
+                <RefreshCw className="w-6 h-6 animate-spin" />
+              </div>
+              <div className="text-center space-y-1.5 max-w-sm">
+                <h4 className="font-extrabold text-sm text-slate-800">กำลังเชื่อมต่อฐานข้อมูล Supabase อัตโนมัติ</h4>
+                <p className="text-xs text-slate-400 font-medium leading-relaxed">กำลังซิงโครไนซ์ข้อมูลสัญญากระดาษและลดต้นลดดอกล่าสุดจากเซิร์ฟเวอร์เพื่อให้พาร์ตเนอร์พร้อมทำงานทันที</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && <Dashboard />}
+              {activeTab === 'input' && <InputContract />}
+              {activeTab === 'disbursement' && <Disbursement />}
+              {activeTab === 'statement' && <Statement />}
+              {activeTab === 'repayment' && <Repayment />}
+              {activeTab === 'parameters' && <Parameters />}
+            </>
+          )}
         </main>
 
         {/* Corporate branding Footer */}
