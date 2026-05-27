@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
 // Fetch server credentials on start to sync local state
@@ -5,11 +6,14 @@ export async function fetchServerSupabaseConfig() {
   try {
     const res = await fetch('/api/supabase-config');
     if (res.ok) {
-      const data = await res.json();
-      if (data.url && data.key) {
-        localStorage.setItem('lms_supabase_url', data.url.trim());
-        localStorage.setItem('lms_supabase_anon_key', data.key.trim());
-        return { url: data.url, key: data.key };
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.url && data.key) {
+          localStorage.setItem('lms_supabase_url', data.url.trim());
+          localStorage.setItem('lms_supabase_anon_key', data.key.trim());
+          return { url: data.url, key: data.key };
+        }
       }
     }
   } catch (err) {
@@ -44,8 +48,8 @@ export async function clearSupabaseConfigOnServer() {
 
 // Load initial values from environment or localStorage
 export function getSavedSupabaseConfig() {
-  const url = localStorage.getItem('lms_supabase_url') || (import.meta as any).env.VITE_SUPABASE_URL || '';
-  const key = localStorage.getItem('lms_supabase_anon_key') || (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
+  const url = localStorage.getItem('lms_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
+  const key = localStorage.getItem('lms_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   const autoSync = localStorage.getItem('lms_supabase_auto_sync') !== 'false'; // default to true if keys present
   
   return { url, key, autoSync };

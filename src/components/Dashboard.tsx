@@ -48,7 +48,7 @@ function SvgAreaChart({
                     : '#CBD5E1';
 
   // Determine label texts dynamically based on key
-  const periodLabelText = dataKey === 'limit' ? 'ทำสัญญารายงวด' : 'ยอดเบิกใช้ใหม่';
+  const periodLabelText = dataKey === 'limit' ? 'ทำสัญญารายเดือน' : 'ยอดเบิกใช้ใหม่';
   const cumulativeLabelText = dataKey === 'limit' ? 'วงเงินสะสม' : 'ยอดคงเหลือสะสม';
 
   const chartOptions: any = {
@@ -250,9 +250,7 @@ function SvgAreaChart({
           />
         </div>
       </div>
-      <div className="border-t border-[#F0F1F3] pt-3 mt-4 text-[10px] text-slate-400 font-semibold text-center uppercase tracking-wide font-sans">
-        อัปเดตข้อมูลสัญญารุ่นจริงจากฐานข้อมูล
-      </div>
+      
     </div>
   );
 }
@@ -370,9 +368,7 @@ function BeautifulDoughnut({
         </div>
       </div>
 
-      <div className="border-t border-[#F0F1F3] pt-3 mt-4 text-[10px] text-slate-400 font-semibold text-center">
-        ระบบวิเคราะห์ข้อมูลตามจริง 100%
-      </div>
+      
     </div>
   );
 }
@@ -630,8 +626,8 @@ export default function Dashboard() {
   const totalForestRaiSum = reserveRaiSum + nonReserveRaiSum || 1;
 
   const forestDoughnutSegments: DoughnutSegment[] = [
-    { label: 'แปลงป่าในเขตสงวน (RESERVE)', amount: reserveRaiSum, color: '#047857', percentage: totalForestRaiSum > 0 ? (reserveRaiSum / totalForestRaiSum) * 100 : 0 },
-    { label: 'แปลงเพาะปลูกทั่วไป (NON-RESERVE)', amount: nonReserveRaiSum, color: '#10B981', percentage: totalForestRaiSum > 0 ? (nonReserveRaiSum / totalForestRaiSum) * 100 : 0 }
+    { label: 'ทำสัญญาซื้อขายไม้ล่วงหน้า (RESERVE)', amount: reserveRaiSum, color: '#047857', percentage: totalForestRaiSum > 0 ? (reserveRaiSum / totalForestRaiSum) * 100 : 0 },
+    { label: 'ไม่ทำสัญญาซื้อขายไม้ล่วงหน้า (NON-RESERVE)', amount: nonReserveRaiSum, color: '#10B981', percentage: totalForestRaiSum > 0 ? (nonReserveRaiSum / totalForestRaiSum) * 100 : 0 }
   ];
 
   // Generate timelines for planting specifically
@@ -645,7 +641,7 @@ export default function Dashboard() {
         <div>
           <h2 className="text-xl font-extrabold tracking-tight text-[#1D2023] font-sans flex items-center gap-2">
             <span>📈</span>
-            Dashboard Summary (บทวิเคราะห์ข้อมูลสรุปฐานข้อมูล)
+            Dashboard Summary
           </h2>
           <p className="text-xs text-slate-400 mt-1 font-medium font-sans">
             การคำนวณอิงเวลาจริง {SYSTEM_DATE} เพื่อประมวลสถิติและวิเคราะห์ลดต้นลดดอกสะสม
@@ -674,7 +670,7 @@ export default function Dashboard() {
                   ? 'bg-[#1463F3] text-white shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
-              title="Dashboard 2: สัญญาเพาะปลูกป่าเศรษฐกิจ"
+              title="Dashboard 2: สัญญาเพาะปลูกต้นกระดาษ"
             >
               <TrendingUp className="w-5 h-5" />
             </button>
@@ -689,7 +685,7 @@ export default function Dashboard() {
             onClick={handleRefresh}
             className="flex items-center space-x-1.5 bg-[#1463F3] text-white px-3.5 py-1.5 rounded-xl shadow-3xs hover:bg-[#1150c7] transition cursor-pointer font-sans"
           >
-            <span>รีเฟรชสด</span>
+            <span>รีเฟรช</span>
           </button>
         </div>
       </div>
@@ -798,7 +794,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="text-[10.5px] text-slate-400 mt-2 font-medium font-sans">
-                สัญญาในความดูแล: <strong className="text-slate-700 font-bold">{totalLimitUnit} บัญชีสัญญาลดต้นลดดอก</strong>
+                สัญญา: <strong className="text-slate-700 font-bold">{totalLimitUnit} บัญชี</strong>
               </div>
             </div>
 
@@ -814,7 +810,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="text-[10.5px] text-slate-400 mt-2 font-medium font-sans">
-                อัตราการดึงใช้เครดิต: <strong className="text-slate-700 font-bold">{totalLimitAmount > 0 ? Math.round((totalDisbursedAmount / totalLimitAmount) * 100) : 0}% ของสิทธิ์</strong>
+                อัตราการเบิกใช้วงเงิน: <strong className="text-slate-700 font-bold">{totalLimitAmount > 0 ? Math.round((totalDisbursedAmount / totalLimitAmount) * 100) : 0}% </strong>
               </div>
             </div>
 
@@ -829,9 +825,7 @@ export default function Dashboard() {
                   {totalOutstanding.toLocaleString('th-TH')}
                 </span>
               </div>
-              <div className="text-[10.5px] text-slate-400 mt-2 font-medium font-sans">
-                หนี้คงค้างหมุนเวียนจริง: <strong className="text-slate-700 font-bold">{(totalOutstanding / 1000).toFixed(1)}k คงเหลือ</strong>
-              </div>
+              
             </div>
 
             {/* Card 4: Aging DPD / NPL Status indicators */}
@@ -845,9 +839,7 @@ export default function Dashboard() {
                   {agingResult.nplRatio}%
                 </span>
               </div>
-              <div className="text-[10.5px] text-slate-400 mt-2 font-medium font-sans">
-                เกณฑ์เฝ้าระวังกลุ่มทุน: <strong className="text-slate-700 font-bold">ต่ำกว่า 15.0% DPD &gt; 90 วัน</strong>
-              </div>
+              
             </div>
           </div>
 
@@ -860,7 +852,7 @@ export default function Dashboard() {
               dataKey="limit"
               strokeColor="#1463F3"
               fillColor="#1463F3"
-              title="ยอดทำสัญญาเป็นวงเงินสะสมตามเกณฑ์เวลา (Approved Credits)"
+              title="ยอดทำสัญญา (Approved Credits)"
               badgeLabel="Active Portfolio"
             />
 
@@ -870,7 +862,7 @@ export default function Dashboard() {
               dataKey="outstanding"
               strokeColor="#1463F3"
               fillColor="#1463F3"
-              title="ยอดเบิกใช้ Outstanding คงเหลือสะสมตามเกณฑ์เวลา (Outstanding Debt)"
+              title="ยอดเบิกใช้ และ Outstanding (Outstanding Debt)"
               badgeLabel="Active Debts"
             />
           </div>
@@ -906,7 +898,7 @@ export default function Dashboard() {
             {/* Card 1: วงเงินสะสมของกลุ่มปลูก (Converted to Polished Light Theme!) */}
             <div className="bg-white p-5 rounded-2xl border border-[#E5E7EB] shadow-xs relative">
               <div className="flex justify-between items-center text-slate-400">
-                <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest font-sans">1. วงเงินเกษตรกรรมปลูกป่าอนุมัติ</span>
+                <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest font-sans">1. วงเงินอนุมัติกลุ่มปลูก</span>
               </div>
               
               <div className="mt-3.5">
@@ -915,7 +907,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="text-[10px] text-slate-400 mt-2 font-medium font-sans">
-                สนับสนุนอุตสาหกรรมป่าไม้และคาร์บอน
+                สนับสนุนกลุ่มปลูกต้นกระดาษ
               </div>
             </div>
 
@@ -979,7 +971,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="text-[10.5px] text-slate-400 mt-2 font-medium font-sans">
-                สัดส่วนOutstandingป่าไม้: <strong className="text-[#1463F3] font-bold">{Math.round((plantingOutstandingSum / (totalOutstanding || 1)) * 100)}% ของพอร์ต</strong>
+                สัดส่วน Outstanding: <strong className="text-[#1463F3] font-bold">{Math.round((plantingOutstandingSum / (totalOutstanding || 1)) * 100)}% ของพอร์ต</strong>
               </div>
             </div>
           </div>
@@ -993,7 +985,7 @@ export default function Dashboard() {
               dataKey="limit"
               strokeColor="#10B981"
               fillColor="#10B981"
-              title="ยอดทำสัญญากลุ่มปลูกป่าสะสมรายวัน (Agro Approved Credit)"
+              title="ยอดทำสัญญากลุ่มปลูกสะสมรายวัน (Agro Approved Credit)"
               badgeLabel="Forestry Limit"
             />
 
@@ -1012,18 +1004,14 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-6">
             <BeautifulDoughnut
               segments={forestDoughnutSegments}
-              title="สัดส่วนแปลงเพาะปลูก (ข้อมูลแยกตามประเภทเขตส่งเสริมป่าเศรษฐกิจ)"
-              description="จำแนกสัดส่วนการลงทุนและการดูแลรักษาคาร์บอนเครดิตรายโครงการในเขตป่าอนุรักษ์พื้นที่สงวน (RESERVE) และแปลงทั่วไป"
-              centerValueLabel="ขนาดป่าไม้รวมสะสม"
+              title="สัดส่วนแปลงเพาะปลูก"
+              description="จำแนกสัดส่วน RESERVE และ NON-RESERVE"
+              centerValueLabel="ขนาดแปลงปลูกสะสม"
               centerValueAmount={`${plantingRaiSum.toLocaleString('th-TH')} ไร่`}
             />
           </div>
 
-          {/* System explanation text instead of listings tables */}
-          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-[#065F46] text-xs font-semibold">
-            🌱 นโยบายการตรวจสอบสิทธิ์คาร์บอนและอัตรารอดตายของต้นป่า (Survival Forestry Check): 
-            อิงพฤติกรรมการจ่ายเงินผลประโยชน์ที่ผูกมัดร่วมกับการเติบโตของแปลงเพาะปลูกตามฤดูกาลปักชำ
-          </div>
+          
 
         </div>
       )}
