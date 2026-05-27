@@ -4,7 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 // Fetch server credentials on start to sync local state
 export async function fetchServerSupabaseConfig() {
   try {
-    const res = await fetch('/api/supabase-config');
+    const res = await fetch('/api/db-config', {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
     if (res.ok) {
       const contentType = res.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
@@ -24,7 +29,7 @@ export async function fetchServerSupabaseConfig() {
 
 export async function saveSupabaseConfigToServer(url: string, key: string) {
   try {
-    await fetch('/api/supabase-config', {
+    await fetch('/api/db-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: url.trim(), key: key.trim() })
@@ -36,7 +41,7 @@ export async function saveSupabaseConfigToServer(url: string, key: string) {
 
 export async function clearSupabaseConfigOnServer() {
   try {
-    await fetch('/api/supabase-config', {
+    await fetch('/api/db-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: '', key: '' })

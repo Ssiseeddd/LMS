@@ -43,7 +43,10 @@ async function startServer() {
   }
 
   // REST API Endpoint to retrieve stored credentials
-  app.get("/api/supabase-config", (req, res) => {
+  app.get("/api/db-config", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     const config = getEnvConfigs();
     res.json({
       url: config.url || process.env.VITE_SUPABASE_URL || "",
@@ -52,7 +55,7 @@ async function startServer() {
   });
 
   // REST API Endpoint to save credentials permanently to `.env`
-  app.post("/api/supabase-config", (req, res) => {
+  app.post("/api/db-config", (req, res) => {
     try {
       const { url, key } = req.body;
       const cleanUrl = (url || "").trim();
