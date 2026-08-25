@@ -2,13 +2,28 @@
  * Database store module using localStorage with real-time defaults and Supabase structure mapping
  */
 
-import { Contract, Disbursement, ScheduledPayment, Repayment, SystemParameters } from './types';
-import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths, recalculateFutureSchedules } from './financialEngine';
+import { Contract, Disbursement, ScheduledPayment, Repayment, SystemParameters, DailyAccruedInterest } from './types';
+import { generateInitialSchedule, calculatePrepaidDisbursement, auditAndApplyOverdueState, allocateHorizontalPayment, addMonths, recalculateFutureSchedules, getExpectedDueDate, getStoredParameters } from './financialEngine';
 import { getSupabaseClient, getSavedSupabaseConfig } from './supabaseClient';
 import { autoPushItem } from './supabaseSync';
+import { parseScheduledPaymentsCSV } from './utils/csvParser';
+import { PROVIDED_SCHEDULES_CSV } from './data/providedSchedules';
 
 // Default initial date defaults to 2026-05-22
-const SYSTEM_DATE = '2026-05-22';
+export function getSystemDate(): string {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('lms_system_date') || '2026-05-22';
+  }
+  return '2026-05-22';
+}
+
+export function saveSystemDate(dateStr: string) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('lms_system_date', dateStr);
+    runDailyAudit();
+  }
+}
+
 
 // 1. Initial Default Contracts
 const DEFAULT_CONTRACTS: Contract[] = [
@@ -28,7 +43,7 @@ const DEFAULT_CONTRACTS: Contract[] = [
     serviceFee: 0,
     treeCutOption: false,
     disbursedAmount: 120000,
-    outstandingPrincipal: 101200,
+    outstandingPrincipal: 94073.48,
     status: 'DEFAULT',
     createdAt: '2026-01-05T00:00:00Z'
   },
@@ -48,7 +63,7 @@ const DEFAULT_CONTRACTS: Contract[] = [
     serviceFee: 0,
     treeCutOption: false,
     disbursedAmount: 80000,
-    outstandingPrincipal: 73500,
+    outstandingPrincipal: 73625.03,
     status: 'ACTIVE',
     createdAt: '2026-02-15T00:00:00Z'
   },
@@ -77,6 +92,27 @@ const DEFAULT_CONTRACTS: Contract[] = [
     outstandingPrincipal: 4000,
     status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'CT1-2500006',
+    customerName: 'นายพูนศักดิ์ รุ่งเรือง (Somyot Truck)',
+    customerTaxId: '3101294829103',
+    customerPhone: '081-234-5678',
+    customerAddress: '99/5 หมู่ 4 ถนนสุวรรณศร ตำบลเมืองเก่า อำเภอกบินทร์บุรี จังหวัดปราจีนบุรี 25110',
+    productType: 'LOAN',
+    creditLimit: 300000,
+    interestRate: 12,
+    startDate: '2026-01-05',
+    firstPaymentDate: '2026-03-05',
+    termMonths: 60,
+    dueDay: 5,
+    paymentFrequency: 'MONTHLY',
+    serviceFee: 0,
+    treeCutOption: false,
+    disbursedAmount: 300000,
+    outstandingPrincipal: 284340.28,
+    status: 'ACTIVE',
+    createdAt: '2026-01-05T00:00:00Z'
   }
 ];
 
@@ -125,6 +161,17 @@ const DEFAULT_DISBURSEMENTS: Disbursement[] = [
     upfrontFee: 15.38,
     netReceived: 1802.15,
     description: 'เบิกจ่ายงวดย่อยที่ 2 หลังปลูกเสร็จเรียบร้อย 2/2/2026'
+  },
+  {
+    id: 'DISB-0005',
+    contractId: 'CT1-2500006',
+    amount: 300000,
+    disburseDate: '2026-01-05',
+    batchNumber: 1,
+    upfrontInterest: 0,
+    upfrontFee: 0,
+    netReceived: 300000,
+    description: 'เบิกจ่ายงวดแรกเต็มจำนวน สัญญากู้เงินพูนศักดิ์'
   }
 ];
 
@@ -180,32 +227,34 @@ const DEFAULT_REPAYMENTS: Repayment[] = [
     id: 'REPAY-0001',
     contractId: 'HP-2026-0001',
     paymentDate: '2026-02-05',
-    amountPaid: 11172.08,
+    amountPaid: 10438.56,
     receiptNo: 'RCP-2026-02-0001',
     appliedPenalty: 0,
     appliedTrackingFee: 0,
-    appliedInterest: 793.84,
-    appliedPrincipal: 9647.36,
-    appliedVat: 730.88,
+    appliedInterest: 747.66,
+    appliedPrincipal: 9008.00,
+    appliedVat: 682.90,
     distributionDetails: [
-      { termNumber: 1, penalty: 0, trackingFee: 0, interest: 793.84, principal: 9647.36, vat: 730.88, total: 11172.08 }
+      { termNumber: 1, penalty: 0, trackingFee: 0, interest: 747.66, principal: 9008.00, vat: 682.90, total: 10438.56 }
     ],
+    outstandingPrincipal: 103141.53,
     createdAt: '2026-02-05T08:30:00Z'
   },
   {
     id: 'REPAY-0002',
     contractId: 'HP-2026-0001',
     paymentDate: '2026-03-05',
-    amountPaid: 11172.08,
+    amountPaid: 10438.56,
     receiptNo: 'RCP-2026-03-0001',
     appliedPenalty: 0,
     appliedTrackingFee: 0,
-    appliedInterest: 735.12,
-    appliedPrincipal: 9706.08,
-    appliedVat: 730.88,
+    appliedInterest: 687.61,
+    appliedPrincipal: 9068.05,
+    appliedVat: 682.90,
     distributionDetails: [
-      { termNumber: 2, penalty: 0, trackingFee: 0, interest: 735.12, principal: 9706.08, vat: 730.88, total: 11172.08 }
+      { termNumber: 2, penalty: 0, trackingFee: 0, interest: 687.61, principal: 9068.05, vat: 682.90, total: 10438.56 }
     ],
+    outstandingPrincipal: 94073.48,
     createdAt: '2026-03-05T09:15:00Z'
   },
   {
@@ -222,9 +271,43 @@ const DEFAULT_REPAYMENTS: Repayment[] = [
     distributionDetails: [
       { termNumber: 1, penalty: 0, trackingFee: 0, interest: 736.44, principal: 6374.97, vat: 0, total: 7111.41 }
     ],
+    outstandingPrincipal: 73625.03,
     createdAt: '2026-03-15T11:00:00Z'
   }
 ];
+
+export function isSandboxActive(): boolean {
+  return localStorage.getItem('lms_sandbox_active') === 'true';
+}
+
+export function enterSandboxMode() {
+  localStorage.setItem('lms_sandbox_active', 'true');
+  resetSandboxData();
+}
+
+export function exitSandboxMode() {
+  localStorage.setItem('lms_sandbox_active', 'false');
+}
+
+export function resetSandboxData() {
+  localStorage.setItem('lms_sandbox_contracts', localStorage.getItem('lms_contracts') || JSON.stringify(DEFAULT_CONTRACTS));
+  localStorage.setItem('lms_sandbox_disbursements', localStorage.getItem('lms_disbursements') || JSON.stringify(DEFAULT_DISBURSEMENTS));
+  localStorage.setItem('lms_sandbox_statements', localStorage.getItem('lms_statements') || '[]');
+  localStorage.setItem('lms_sandbox_repayments', localStorage.getItem('lms_repayments') || '[]');
+  localStorage.setItem('lms_sandbox_parameters', localStorage.getItem('lms_parameters') || '');
+}
+
+export function getStorageKeys() {
+  const active = isSandboxActive();
+  return {
+    contracts: active ? 'lms_sandbox_contracts' : 'lms_contracts',
+    disbursements: active ? 'lms_sandbox_disbursements' : 'lms_disbursements',
+    statements: active ? 'lms_sandbox_statements' : 'lms_statements',
+    repayments: active ? 'lms_sandbox_repayments' : 'lms_repayments',
+    parameters: active ? 'lms_sandbox_parameters' : 'lms_parameters',
+    dailyAccruedInterests: active ? 'lms_sandbox_daily_accrued' : 'lms_daily_accrued_interests',
+  };
+}
 
 export function initializeDB() {
   if (!localStorage.getItem('lms_parameters')) {
@@ -249,13 +332,11 @@ export function initializeDB() {
   if (!localStorage.getItem('lms_repayments')) {
     localStorage.setItem('lms_repayments', JSON.stringify(DEFAULT_REPAYMENTS));
   }
-  
-  // Apply Audit dynamic values instantly
-  runDailyAudit();
 }
 
 export function getSystemParameters(): SystemParameters {
-  const raw = localStorage.getItem('lms_parameters');
+  const keys = getStorageKeys();
+  const raw = localStorage.getItem(keys.parameters);
   if (raw) return JSON.parse(raw);
   return {
     penaltyRate: 15,
@@ -266,13 +347,15 @@ export function getSystemParameters(): SystemParameters {
 }
 
 export function saveSystemParameters(params: SystemParameters) {
-  localStorage.setItem('lms_parameters', JSON.stringify(params));
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.parameters, JSON.stringify(params));
   runDailyAudit();
 }
 
 export function getContracts(): Contract[] {
   initializeDB();
-  const list = JSON.parse(localStorage.getItem('lms_contracts') || '[]');
+  const keys = getStorageKeys();
+  const list = JSON.parse(localStorage.getItem(keys.contracts) || '[]');
   let changed = false;
   const updated = list.map((c: any) => {
     if (!c.customerAddress) {
@@ -288,70 +371,515 @@ export function getContracts(): Contract[] {
     return c;
   });
   if (changed) {
-    localStorage.setItem('lms_contracts', JSON.stringify(updated));
+    localStorage.setItem(keys.contracts, JSON.stringify(updated));
   }
   return updated;
 }
 
 export function getDisbursements(): Disbursement[] {
   initializeDB();
-  return JSON.parse(localStorage.getItem('lms_disbursements') || '[]');
+  const keys = getStorageKeys();
+  return JSON.parse(localStorage.getItem(keys.disbursements) || '[]');
 }
 
 export function getScheduledPayments(): ScheduledPayment[] {
   initializeDB();
-  return JSON.parse(localStorage.getItem('lms_statements') || '[]');
+  const keys = getStorageKeys();
+  let list: ScheduledPayment[] = JSON.parse(localStorage.getItem(keys.statements) || '[]');
+  const contracts: Contract[] = JSON.parse(localStorage.getItem(keys.contracts) || '[]');
+
+  // Deduplicate schedules by contractId + termNumber
+  const uniqueMap = new Map<string, ScheduledPayment>();
+  list.forEach(s => {
+    const cCid = (s.contractId || '').trim().toUpperCase();
+    const key = `${cCid}_TERM_${s.termNumber}`;
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, s);
+    } else {
+      const existing = uniqueMap.get(key)!;
+      if (!existing.fromDb && s.fromDb) {
+        uniqueMap.set(key, s);
+      } else if (existing.fromDb && s.fromDb) {
+        // If both are from DB, prefer the one with higher totalPaid or valid status
+        if ((s.totalPaid || 0) > (existing.totalPaid || 0) || (existing.status === 'NOT_PAID' && s.status === 'PAID')) {
+          uniqueMap.set(key, s);
+        }
+      }
+    }
+  });
+
+  if (uniqueMap.size !== list.length) {
+    list = Array.from(uniqueMap.values());
+    localStorage.setItem(keys.statements, JSON.stringify(list));
+  }
+
+  let changed = false;
+
+  // Sanitize only corrupt 'NaN' strings
+  list.forEach(s => {
+    const cCid = (s.contractId || '').trim().toUpperCase();
+    const parentCon = contracts.find(c => (c.id || '').trim().toUpperCase() === cCid);
+    
+    if (s.dueDate && typeof s.dueDate === 'string' && s.dueDate.includes('NaN')) {
+      if (parentCon) {
+        const firstDisbDate = getFirstDisbursementDate(parentCon.id) || parentCon.firstDisburseDate;
+        s.dueDate = getExpectedDueDate(parentCon, s.termNumber || 1, firstDisbDate);
+      } else {
+        s.dueDate = getSystemDate();
+      }
+      changed = true;
+    }
+  });
+
+  // Ensure every contract has complete schedule terms (restore any missing terms from provided schedules or auto-generation)
+  const providedParsed = parseScheduledPaymentsCSV(PROVIDED_SCHEDULES_CSV);
+  contracts.forEach((c: Contract) => {
+    const cCid = (c.id || '').trim().toUpperCase();
+    const cSchedules = list.filter(s => (s.contractId || '').trim().toUpperCase() === cCid);
+    const disburseAmt = c.disbursedAmount || c.creditLimit || 0;
+    const disburseDate = getFirstDisbursementDate(c.id) || c.firstDisburseDate || c.startDate || getSystemDate();
+
+    if (cSchedules.length === 0) {
+      const rawSchedules = generateInitialSchedule(c, disburseAmt, disburseDate);
+      list.push(...rawSchedules);
+      changed = true;
+    } else {
+      // Check if any terms in sequence 1..termMonths (or max existing term) are missing from list
+      const existingTermNumbers = new Set(cSchedules.map(s => s.termNumber));
+      const maxTermInSchedules = Math.max(0, ...cSchedules.map(s => s.termNumber));
+      const targetMaxTerm = Math.max(c.termMonths || 1, maxTermInSchedules);
+      
+      const contractProvided = providedParsed.filter(p => (p.contractId || '').trim().toUpperCase() === cCid);
+      const fullGenerated = generateInitialSchedule(c, disburseAmt, disburseDate);
+
+      for (let t = 1; t <= targetMaxTerm; t++) {
+        if (!existingTermNumbers.has(t)) {
+          const fromProvided = contractProvided.find(p => p.termNumber === t);
+          const fromGenerated = fullGenerated.find(g => g.termNumber === t);
+          const fallbackTerm: ScheduledPayment = fromProvided || fromGenerated || {
+            id: `${c.id}-SCH-${t}`,
+            contractId: c.id,
+            termNumber: t,
+            dueDate: getExpectedDueDate(c, t, disburseDate),
+            principalDue: 0,
+            interestDue: 0,
+            vatDue: 0,
+            penaltyDue: 0,
+            trackingFeeDue: 0,
+            totalDue: 0,
+            principalPaid: 0,
+            interestPaid: 0,
+            vatPaid: 0,
+            penaltyPaid: 0,
+            trackingFeePaid: 0,
+            totalPaid: 0,
+            status: 'NOT_PAID',
+            lastUpdated: getSystemDate()
+          };
+
+          list.push(fallbackTerm);
+          existingTermNumbers.add(t);
+          changed = true;
+        }
+      }
+    }
+  });
+
+  if (changed) {
+    list.sort((a, b) => a.termNumber - b.termNumber);
+    localStorage.setItem(keys.statements, JSON.stringify(list));
+  }
+
+  return list;
 }
 
 export function getRepayments(): Repayment[] {
   initializeDB();
-  return JSON.parse(localStorage.getItem('lms_repayments') || '[]');
+  const keys = getStorageKeys();
+  const raw = localStorage.getItem(keys.repayments);
+  let list: Repayment[] = raw ? JSON.parse(raw) : [];
+
+  const seenIds = new Set<string>();
+  let modified = false;
+
+  const sanitizedList = list.map((r, idx) => {
+    let currentId = r.id;
+    if (!currentId || seenIds.has(currentId)) {
+      let nextNum = idx + 1;
+      let newId = `REPAY-${String(nextNum).padStart(4, '0')}`;
+      while (seenIds.has(newId)) {
+        nextNum++;
+        newId = `REPAY-${String(nextNum).padStart(4, '0')}`;
+      }
+      currentId = newId;
+      modified = true;
+    }
+    seenIds.add(currentId);
+    return { ...r, id: currentId };
+  });
+
+  if (modified) {
+    localStorage.setItem(keys.repayments, JSON.stringify(sanitizedList));
+  }
+
+  return sanitizedList;
+}
+
+export function getDailyAccruedInterests(contractId?: string): DailyAccruedInterest[] {
+  initializeDB();
+  const keys = getStorageKeys();
+  const raw = localStorage.getItem(keys.dailyAccruedInterests);
+  if (!raw) return [];
+  try {
+    const list: DailyAccruedInterest[] = JSON.parse(raw);
+    if (contractId) {
+      const cid = contractId.trim().toUpperCase();
+      return list.filter(item => (item.contractId || '').trim().toUpperCase() === cid);
+    }
+    return list;
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveScheduledPayments(schedules: ScheduledPayment[]) {
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.statements, JSON.stringify(schedules));
+
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync && !isSandboxActive()) {
+    schedules.forEach(sch => {
+      autoPushItem(client, 'scheduled_payments', sch);
+    });
+  }
+}
+
+export function clearAllAccruedInterest() {
+  const schedules = getScheduledPayments();
+  schedules.forEach(sch => {
+    sch.accruedInterest = 0;
+  });
+  saveScheduledPayments(schedules);
+}
+
+export function saveDailyAccruedInterests(records: DailyAccruedInterest[]) {
+  const keys = getStorageKeys();
+  const key = keys.dailyAccruedInterests;
+  const existing = getDailyAccruedInterests();
+  const map = new Map<string, DailyAccruedInterest>();
+  existing.forEach(r => map.set(r.id, r));
+  records.forEach(r => map.set(r.id, r));
+  const merged = Array.from(map.values());
+  try {
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch (e) {
+    console.warn('[LocalStorage Quota Warning] Exceeded storage limit when saving daily accrued interests:', e);
+    try {
+      const recent = merged.slice(-1000);
+      localStorage.setItem(key, JSON.stringify(recent));
+    } catch (e2) {
+      console.warn('[LocalStorage Quota Warning] Fallback save failed:', e2);
+    }
+  }
+}
+
+export function getFirstDisbursementDate(contractId: string): string | null {
+  const disbursements = getDisbursements();
+  const conDisbs = disbursements.filter(d => (d.contractId || '').trim().toUpperCase() === (contractId || '').trim().toUpperCase());
+  if (conDisbs.length > 0) {
+    conDisbs.sort((a, b) => a.disburseDate.localeCompare(b.disburseDate));
+    return conDisbs[0].disburseDate;
+  }
+  const contracts = getContracts();
+  const con = contracts.find(c => (c.id || '').trim().toUpperCase() === (contractId || '').trim().toUpperCase());
+  if (con && (con.firstDisburseDate || con.disburseDate)) {
+    return con.firstDisburseDate || con.disburseDate || null;
+  }
+  return null;
 }
 
 /**
- * Audit defaults, recalculates Penalties and Collection tracking fees based on current system time
+ * Audit defaults, recalculates daily accrued interest, Penalties and Collection tracking fees based on current system time
  */
 export function runDailyAudit() {
-  const contracts = JSON.parse(localStorage.getItem('lms_contracts') || '[]');
-  const schedules = JSON.parse(localStorage.getItem('lms_statements') || '[]');
+  const keys = getStorageKeys();
+  const rawContracts = localStorage.getItem(keys.contracts);
+  const rawSchedules = localStorage.getItem(keys.statements);
+  if (!rawContracts || !rawSchedules) return;
+
+  const contracts: Contract[] = JSON.parse(rawContracts);
+  let schedules: ScheduledPayment[] = JSON.parse(rawSchedules);
+  const repayments: Repayment[] = JSON.parse(localStorage.getItem(keys.repayments) || '[]');
+  const sysDate = getSystemDate();
+
+  // Daily interest recalculation for active contracts up to sysDate
+  contracts.forEach(con => {
+    if (con.status === 'ACTIVE' || con.status === 'DEFAULT') {
+      const disburseDate = getFirstDisbursementDate(con.id) || con.firstDisburseDate || con.startDate;
+      schedules = recalculateFutureSchedules(con, schedules, sysDate, repayments, disburseDate);
+    }
+  });
+
+  const { updatedSchedules, updatedContracts } = auditAndApplyOverdueState(schedules, contracts, sysDate);
   
-  const { updatedSchedules, updatedContracts } = auditAndApplyOverdueState(schedules, contracts, SYSTEM_DATE);
-  
-  localStorage.setItem('lms_statements', JSON.stringify(updatedSchedules));
-  localStorage.setItem('lms_contracts', JSON.stringify(updatedContracts));
+  localStorage.setItem(keys.statements, JSON.stringify(updatedSchedules));
+  localStorage.setItem(keys.contracts, JSON.stringify(updatedContracts));
+
+  // Sync to Supabase if autoSync enabled
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync && !isSandboxActive()) {
+    updatedSchedules.forEach(sch => {
+      autoPushItem(client, 'scheduled_payments', sch);
+    });
+  }
 }
 
 /**
- * Inserts a new contract & triggers generateInitialSchedule
+ * Runs a full historical daily interest audit from contract start dates up to current system date.
  */
-export function addContract(contract: Omit<Contract, 'disbursedAmount' | 'outstandingPrincipal' | 'status' | 'createdAt'>): Contract {
+export function runHistoricalDailyAudit(): { updatedContractsCount: number; updatedSchedulesCount: number } {
+  runDailyAudit();
+  const keys = getStorageKeys();
+  const rawContracts = localStorage.getItem(keys.contracts) || '[]';
+  const rawSchedules = localStorage.getItem(keys.statements) || '[]';
+  const contracts: Contract[] = JSON.parse(rawContracts);
+  const schedules: ScheduledPayment[] = JSON.parse(rawSchedules);
+  return {
+    updatedContractsCount: contracts.length,
+    updatedSchedulesCount: schedules.length
+  };
+}
+
+/**
+ * Imports scheduled payments from CSV text and ensures contract records exist.
+ */
+export function importScheduledPaymentsFromCSV(csvText: string, replaceMode: boolean = false): { importedCount: number; contractsEnsured: number } {
+  initializeDB();
+  const keys = getStorageKeys();
+  const parsed = parseScheduledPaymentsCSV(csvText);
+  if (parsed.length === 0) return { importedCount: 0, contractsEnsured: 0 };
+
+  const currentSchedules: ScheduledPayment[] = replaceMode
+    ? []
+    : JSON.parse(localStorage.getItem(keys.statements) || '[]');
+  const currentContracts: Contract[] = JSON.parse(localStorage.getItem(keys.contracts) || '[]');
+
+  const scheduleMap = new Map<string, ScheduledPayment>();
+  // Index existing schedules by id as well as contractId+termNumber
+  const termKeyMap = new Map<string, string>(); // termKey -> schedule id
+
+  currentSchedules.forEach(s => {
+    scheduleMap.set(s.id, s);
+    const key = `${(s.contractId || '').trim().toUpperCase()}_TERM_${s.termNumber}`;
+    termKeyMap.set(key, s.id);
+  });
+
+  // Upsert parsed items cleanly
+  parsed.forEach(s => {
+    s.fromDb = true;
+    const key = `${(s.contractId || '').trim().toUpperCase()}_TERM_${s.termNumber}`;
+    const existingId = termKeyMap.get(key);
+    if (existingId && existingId !== s.id) {
+      scheduleMap.delete(existingId);
+    }
+    scheduleMap.set(s.id, s);
+    termKeyMap.set(key, s.id);
+  });
+
+  const updatedSchedules = Array.from(scheduleMap.values());
+
+  // Ensure contracts exist for all contractIds in updatedSchedules
+  let contractsEnsured = 0;
+  const contractIdSet = new Set(currentContracts.map(c => (c.id || '').trim().toUpperCase()));
+
+  updatedSchedules.forEach(s => {
+    const cCid = (s.contractId || '').trim().toUpperCase();
+    if (cCid && !contractIdSet.has(cCid)) {
+      contractIdSet.add(cCid);
+      contractsEnsured++;
+      const isHP = cCid.startsWith('HP') || cCid.startsWith('CH');
+      const newContract: Contract = {
+        id: s.contractId,
+        customerName: `ลูกค้าสัญญา ${s.contractId}`,
+        customerTaxId: '0000000000000',
+        customerPhone: '080-000-0000',
+        productType: isHP ? 'HP' : 'LOAN',
+        creditLimit: Math.max(100000, s.totalDue * 12),
+        interestRate: 8,
+        startDate: s.dueDate || getSystemDate(),
+        paymentFrequency: 'MONTHLY',
+        serviceFee: 0,
+        treeCutOption: false,
+        disbursedAmount: Math.max(100000, s.totalDue * 12),
+        outstandingPrincipal: s.principalDue,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString()
+      };
+      currentContracts.push(newContract);
+    }
+  });
+
+  localStorage.setItem(keys.statements, JSON.stringify(updatedSchedules));
+  localStorage.setItem(keys.contracts, JSON.stringify(currentContracts));
+
+  runDailyAudit();
+
+  return {
+    importedCount: parsed.length,
+    contractsEnsured
+  };
+}
+
+
+/**
+ * Updates the pending disbursement amount for a specific schedule payment
+ */
+export function updateScheduledPaymentPendingDisbursement(id: string, pendingDisbursement: number): ScheduledPayment | null {
+  const schedules = getScheduledPayments();
+  const index = schedules.findIndex(s => s.id === id);
+  if (index === -1) return null;
+
+  schedules[index].pendingDisbursement = pendingDisbursement;
+  schedules[index].lastUpdated = new Date().toISOString().split('T')[0];
+
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.statements, JSON.stringify(schedules));
+
+  // Sync to Supabase if connected
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync && !isSandboxActive()) {
+    autoPushItem(client, 'scheduled_payments', schedules[index]);
+  }
+
+  return schedules[index];
+}
+
+/**
+ * Helper to generate initial schedule and align it with snapshot/migrated balances
+ */
+function generateAndSaveSnapshotSchedules(contract: Contract, disbursedAmount: number, outstandingPrincipal: number) {
+  const disburseDate = getFirstDisbursementDate(contract.id) || contract.firstDisburseDate || contract.disburseDate || contract.startDate;
+  const rawSchedules = generateInitialSchedule(contract, disbursedAmount, disburseDate);
+  
+  let principalPaidTarget = Number((disbursedAmount - outstandingPrincipal).toFixed(2));
+  
+  const updatedSchedules = rawSchedules.map(term => {
+    if (principalPaidTarget >= term.principalDue - 0.01 && principalPaidTarget > 0) {
+      term.principalPaid = term.principalDue;
+      term.interestPaid = term.interestDue;
+      term.vatPaid = term.vatDue;
+      term.totalPaid = term.totalDue;
+      term.status = 'PAID';
+      principalPaidTarget = Math.max(0, Number((principalPaidTarget - term.principalDue).toFixed(2)));
+    } else if (principalPaidTarget > 0.01) {
+      term.principalPaid = Math.round(principalPaidTarget * 100) / 100;
+      term.interestPaid = term.interestDue; // assume interest is paid
+      term.vatPaid = term.vatDue;
+      term.totalPaid = Math.round((term.principalPaid + term.interestPaid + term.vatPaid) * 100) / 100;
+      term.status = 'PARTIAL';
+      principalPaidTarget = 0;
+    }
+    return term;
+  });
+
+  const allSchedules = getScheduledPayments();
+  
+  // Find the last paid or partial term due date
+  let lastPaidDueDate = disburseDate;
+  updatedSchedules.forEach(s => {
+    if (s.status === 'PAID' || s.status === 'PARTIAL') {
+      if (new Date(s.dueDate).getTime() > new Date(lastPaidDueDate).getTime()) {
+        lastPaidDueDate = s.dueDate;
+      }
+    }
+  });
+
+  // Recalculate future terms using the last paid date as the anchor and empty repayments list since it's a migration snapshot
+  const finalSchedulesForContract = recalculateFutureSchedules(contract, updatedSchedules, lastPaidDueDate, [], disburseDate);
+
+  allSchedules.push(...finalSchedulesForContract);
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.statements, JSON.stringify(allSchedules));
+
+  // Auto-sync to Supabase
+  const client = getSupabaseClient();
+  const config = getSavedSupabaseConfig();
+  if (client && config.autoSync && !isSandboxActive()) {
+    finalSchedulesForContract.forEach(sch => {
+      autoPushItem(client, 'scheduled_payments', sch);
+    });
+  }
+}
+
+/**
+ * Inserts a new contract & triggers generateInitialSchedule or snapshot setup
+ */
+export function addContract(
+  contract: Omit<Contract, 'status' | 'createdAt' | 'disbursedAmount' | 'outstandingPrincipal'> & {
+    disbursedAmount?: number;
+    outstandingPrincipal?: number;
+  }
+): Contract {
+  const hasSnapshot = contract.disbursedAmount !== undefined && contract.outstandingPrincipal !== undefined;
+  const initialDisbursed = hasSnapshot ? Number(contract.disbursedAmount) : 0;
+  const initialOutstanding = hasSnapshot ? Number(contract.outstandingPrincipal) : 0;
+
   const newContract: Contract = {
     ...contract,
-    disbursedAmount: 0,
-    outstandingPrincipal: 0,
+    disbursedAmount: initialDisbursed,
+    outstandingPrincipal: initialOutstanding,
     status: 'ACTIVE',
     createdAt: new Date().toISOString()
   };
 
   const contracts = getContracts();
   contracts.push(newContract);
-  localStorage.setItem('lms_contracts', JSON.stringify(contracts));
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.contracts, JSON.stringify(contracts));
 
   // Async Auto-sync to Supabase if connected
   const client = getSupabaseClient();
   const config = getSavedSupabaseConfig();
-  if (client && config.autoSync) {
+  if (client && config.autoSync && !isSandboxActive()) {
     autoPushItem(client, 'contracts', newContract);
   }
 
-  // If Hire Purchase, we execute single disbursement immediately equal to the credit limit
-  if (contract.productType === 'HP') {
-    disburseContract(
-      newContract.id,
-      contract.creditLimit,
-      contract.startDate,
-      'เบิกเงินเช้าซื้อเต็มจำนวน ณ วันทำสัญญา'
-    );
+  if (hasSnapshot) {
+    // Save disbursement entry for consistency
+    const disbursements = getDisbursements();
+    const disburseDateToUse = newContract.firstDisburseDate || newContract.disburseDate || newContract.startDate;
+    const newDisb: Disbursement = {
+      id: `DISB-${String(disbursements.length + 1).padStart(4, '0')}`,
+      contractId: newContract.id,
+      amount: initialDisbursed,
+      disburseDate: disburseDateToUse,
+      batchNumber: 1,
+      upfrontInterest: 0,
+      upfrontFee: 0,
+      netReceived: initialDisbursed,
+      description: 'ยอดยกยอดมา ณ วันที่เริ่มต้นระบบ (Migration Snapshot)'
+    };
+    disbursements.push(newDisb);
+    localStorage.setItem(keys.disbursements, JSON.stringify(disbursements));
+    if (client && config.autoSync && !isSandboxActive()) {
+      autoPushItem(client, 'disbursements', newDisb);
+    }
+
+    // Generate schedule and mark paid terms
+    generateAndSaveSnapshotSchedules(newContract, initialDisbursed, initialOutstanding);
+  } else {
+    // If Hire Purchase, we execute single disbursement immediately equal to the credit limit
+    if (newContract.productType === 'HP') {
+      disburseContract(
+        newContract.id,
+        newContract.creditLimit,
+        newContract.firstDisburseDate || newContract.disburseDate || newContract.startDate,
+        'เบิกเงินเช้าซื้อเต็มจำนวน ณ วันทำสัญญา'
+      );
+    }
   }
 
   return newContract;
@@ -403,23 +931,40 @@ export function disburseContract(
 
   // Add disbursement
   disbursements.push(newDisb);
-  localStorage.setItem('lms_disbursements', JSON.stringify(disbursements));
+  const keys = getStorageKeys();
+  localStorage.setItem(keys.disbursements, JSON.stringify(disbursements));
 
   // Update Contract disbursed amount and outstanding logic
   con.disbursedAmount = Number((con.disbursedAmount + amount).toFixed(2));
   con.outstandingPrincipal = Number((con.outstandingPrincipal + amount).toFixed(2));
   
   contracts[index] = con;
-  localStorage.setItem('lms_contracts', JSON.stringify(contracts));
+  localStorage.setItem(keys.contracts, JSON.stringify(contracts));
 
   // Generate or regenerate schedule! 
   // If first disbursement, create general schedule
   // If subsequent disbursement, we adjust current schedule to add outstanding principal
   let schedules = getScheduledPayments();
   if (batchNum === 1) {
-    const initSched = generateInitialSchedule(con, amount, disburseDate);
-    // Append to database
-    schedules.push(...initSched);
+    const existingContractSchedules = schedules.filter(s => s.contractId === contractId);
+    if (existingContractSchedules.length > 0) {
+      // If schedules already existed (e.g. from Supabase / CSV), update their pendingDisbursement and assign due dates from disburseDate
+      schedules = schedules.map(sch => {
+        if (sch.contractId === contractId) {
+          const newDueDate = sch.dueDate || addMonths(disburseDate, (sch.termNumber || 1) * (con.paymentFrequency === 'ANNUAL' ? 12 : 1), con.dueDay);
+          const newPending = Math.max(0, (sch.pendingDisbursement || 0) - amount);
+          return {
+            ...sch,
+            dueDate: newDueDate,
+            pendingDisbursement: newPending
+          };
+        }
+        return sch;
+      });
+    } else {
+      const initSched = generateInitialSchedule(con, amount, disburseDate);
+      schedules.push(...initSched);
+    }
   } else {
     // For ANNUAL (กลุ่มปลูก) - subsequent drawdowns add to the accumulated principal 
     // and interest calculation increases. Let's find outstanding scheds for this contract and recalculate
@@ -428,21 +973,24 @@ export function disburseContract(
         const rate = con.interestRate / 100;
         
         // Final year due gets increased by the secondary drawdown amount
-        const isFinalYear = sch.dueDate === addMonths(firstDisDate, con.termMonths, con.dueDay);
+        const isFinalYear = sch.dueDate === addMonths(firstDisDate, con.termMonths, con.dueDay) || sch.termNumber === Math.ceil(con.termMonths / 12);
         const addedPrincipal = isFinalYear ? amount : 0;
         const newPrincipalDue = Number((sch.principalDue + addedPrincipal).toFixed(2));
 
-        // Let's compute remaining interest if annual: subsequent years interest is calculated based on cumulative drawn amount
+        // Compute remaining interest if annual: subsequent years interest is calculated based on cumulative drawn amount
         let newInterestDue = sch.interestDue;
         if (con.paymentFrequency === 'ANNUAL' && sch.termNumber > 1) {
           // Interest Year 2 onwards = Accumulated Principal * Rate
           newInterestDue = Number((con.disbursedAmount * rate).toFixed(2));
         }
 
+        const newPending = Math.max(0, (sch.pendingDisbursement || 0) - amount);
+
         return {
           ...sch,
           principalDue: newPrincipalDue,
           interestDue: newInterestDue,
+          pendingDisbursement: newPending,
           totalDue: Number((newPrincipalDue + newInterestDue + sch.penaltyDue + sch.trackingFeeDue + sch.vatDue).toFixed(2))
         };
       }
@@ -450,7 +998,7 @@ export function disburseContract(
     });
   }
 
-  localStorage.setItem('lms_statements', JSON.stringify(schedules));
+  localStorage.setItem(keys.statements, JSON.stringify(schedules));
 
   // Run audit to apply correct states
   runDailyAudit();
@@ -458,10 +1006,10 @@ export function disburseContract(
   // Async Auto-sync to Supabase if connected
   const client = getSupabaseClient();
   const config = getSavedSupabaseConfig();
-  if (client && config.autoSync) {
+  if (client && config.autoSync && !isSandboxActive()) {
     autoPushItem(client, 'disbursements', newDisb);
     autoPushItem(client, 'contracts', con);
-    const updatedSchedules = JSON.parse(localStorage.getItem('lms_statements') || '[]');
+    const updatedSchedules = JSON.parse(localStorage.getItem(keys.statements) || '[]');
     const contractSchedules = updatedSchedules.filter((sch: any) => sch.contractId === contractId);
     for (const sch of contractSchedules) {
       autoPushItem(client, 'scheduled_payments', sch);
@@ -480,76 +1028,114 @@ export function recordRepayment(
   paymentDate: string
 ): Repayment | null {
   const contracts = getContracts();
-  const currentConIndex = contracts.findIndex(c => c.id === contractId);
+  const conCid = (contractId || '').trim().toUpperCase();
+  const currentConIndex = contracts.findIndex(c => (c.id || '').trim().toUpperCase() === conCid);
   if (currentConIndex === -1) return null;
   const con = contracts[currentConIndex];
 
   const schedules = getScheduledPayments();
   const repayments = getRepayments();
 
-  // Run allocation
+  const disburseDate = getFirstDisbursementDate(con.id) || con.firstDisburseDate || con.startDate;
+
+  // Recalculate schedules first to ensure we use up-to-date interest/principal due based on the actual payment date and outstanding principal before payment!
+  const recalculatedSchedules = recalculateFutureSchedules(con, schedules, paymentDate, repayments, disburseDate);
+
+  // Run allocation on recalculated schedules
   const { updatedScheduledPayments, allocationItems, allocatedAmounts } = allocateHorizontalPayment(
-    schedules,
+    recalculatedSchedules,
     contractId,
     amountPaid,
     paymentDate,
-    con.productType === 'HP' ? 0.07 : 0
+    con.productType === 'HP' ? 0.07 : 0,
+    disburseDate,
+    repayments,
+    con
   );
 
-  // Save updated schedule payments
-  localStorage.setItem('lms_statements', JSON.stringify(updatedScheduledPayments));
+  const keys = getStorageKeys();
 
-  // Generate Receipt No.
-  const rcpCount = repayments.filter(r => r.paymentDate.substring(0, 7) === paymentDate.substring(0, 7)).length + 1;
-  const yearMonth = paymentDate.replace(/-/g, '').substring(0, 6);
-  const receiptNo = `RCP-${yearMonth}-${String(rcpCount).padStart(4, '0')}`;
+  // Save updated schedule payments
+  localStorage.setItem(keys.statements, JSON.stringify(updatedScheduledPayments));
+
+  // Generate Receipt No. based on Product Type (HP -> RH2-YY00000, LOAN -> RT1-YY00000)
+  const yy = paymentDate.substring(2, 4); // e.g. '2026' -> '26'
+  const prefix = con.productType === 'HP' ? 'RH2' : 'RT1';
+  const yearPrefix = `${prefix}-${yy}`;
+  const rcpCount = repayments.filter(r => r.receiptNo && r.receiptNo.startsWith(yearPrefix)).length + 1;
+  const receiptNo = `${yearPrefix}${String(rcpCount).padStart(5, '0')}`;
+
+  const afterOutstanding = Math.max(0, Number((con.outstandingPrincipal - allocatedAmounts.appliedPrincipal).toFixed(2)));
+
+  let nextNum = repayments.length + 1;
+  while (repayments.some(r => r.id === `REPAY-${String(nextNum).padStart(4, '0')}`)) {
+    nextNum++;
+  }
 
   const newRepay: Repayment = {
-    id: `REPAY-${String(repayments.length + 1).padStart(4, '0')}`,
+    id: `REPAY-${String(nextNum).padStart(4, '0')}`,
     contractId,
     paymentDate,
     amountPaid,
     receiptNo,
     ...allocatedAmounts,
     distributionDetails: allocationItems,
+    outstandingPrincipal: afterOutstanding,
     createdAt: new Date().toISOString()
   };
 
   repayments.push(newRepay);
-  localStorage.setItem('lms_repayments', JSON.stringify(repayments));
 
-  // Decrease contract outstanding principal
-  con.outstandingPrincipal = Math.max(0, Number((con.outstandingPrincipal - allocatedAmounts.appliedPrincipal).toFixed(2)));
+  // Recalculate chronological running outstanding principal for all repayments of this contract
+  const conRepayments = repayments
+    .filter(r => (r.contractId || '').trim().toUpperCase() === conCid)
+    .sort((a, b) => a.paymentDate.localeCompare(b.paymentDate) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+
+  const params = getStoredParameters();
+  const vatRateDecimal = params.vatRate / 100;
+  const initialPrincipal = con.productType === 'HP' 
+    ? con.creditLimit / (1 + vatRateDecimal) 
+    : con.disbursedAmount;
+
+  let runBal = initialPrincipal;
+  conRepayments.forEach(r => {
+    runBal = Math.max(0, Number((runBal - (r.appliedPrincipal || 0)).toFixed(2)));
+    r.outstandingPrincipal = runBal;
+  });
+  con.outstandingPrincipal = runBal;
+
+  localStorage.setItem(keys.repayments, JSON.stringify(repayments));
   
-  // Dynamic daily reducing-balance interest & future schedules recalculation
-  const finalScheduledPayments = recalculateFutureSchedules(con, updatedScheduledPayments, paymentDate);
-  localStorage.setItem('lms_statements', JSON.stringify(finalScheduledPayments));
+  // Dynamic daily reducing-balance interest & future schedules recalculation up to system date
+  const sysDate = getSystemDate();
+  const finalScheduledPayments = recalculateFutureSchedules(con, updatedScheduledPayments, sysDate, repayments, disburseDate);
+  localStorage.setItem(keys.statements, JSON.stringify(finalScheduledPayments));
 
   // Check if contract is now fully closed
   const remainingDue = finalScheduledPayments
-    .filter(s => s.contractId === contractId)
+    .filter(s => (s.contractId || '').trim().toUpperCase() === conCid)
     .reduce((sum, s) => sum + (s.principalDue - s.principalPaid + s.interestDue - s.interestPaid), 0);
   
   if (remainingDue <= 1 && con.outstandingPrincipal <= 1) {
     con.status = 'CLOSED';
   } else {
     // Re-audit state
-    const overdueSchedules = finalScheduledPayments.filter(s => s.contractId === contractId && s.status === 'OVERDUE');
+    const overdueSchedules = finalScheduledPayments.filter(s => (s.contractId || '').trim().toUpperCase() === conCid && s.status === 'OVERDUE');
     if (overdueSchedules.length < 2 && con.status === 'DEFAULT') {
       con.status = 'ACTIVE';
     }
   }
 
   contracts[currentConIndex] = con;
-  localStorage.setItem('lms_contracts', JSON.stringify(contracts));
+  localStorage.setItem(keys.contracts, JSON.stringify(contracts));
 
   // Async Auto-sync to Supabase if connected
   const client = getSupabaseClient();
   const config = getSavedSupabaseConfig();
-  if (client && config.autoSync) {
+  if (client && config.autoSync && !isSandboxActive()) {
     autoPushItem(client, 'repayments', newRepay);
     autoPushItem(client, 'contracts', con);
-    const contractSchedules = finalScheduledPayments.filter(sch => sch.contractId === contractId);
+    const contractSchedules = finalScheduledPayments.filter(sch => (sch.contractId || '').trim().toUpperCase() === conCid);
     for (const sch of contractSchedules) {
       autoPushItem(client, 'scheduled_payments', sch);
     }
@@ -572,6 +1158,10 @@ CREATE TYPE payment_frequency AS ENUM ('MONTHLY', 'ANNUAL');
 CREATE TYPE statement_status AS ENUM ('NOT_PAID', 'PARTIAL', 'PAID', 'OVERDUE');
 
 -- 2. Create contracts table
+-- Note: If you have an existing table, run this SQL command to add columns:
+-- ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS disburse_date DATE;
+-- ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS first_disburse_date DATE;
+-- ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS installment_amount NUMERIC(15, 2);
 CREATE TABLE public.contracts (
     id VARCHAR(100) PRIMARY KEY,
     customer_name VARCHAR(255) NOT NULL,
@@ -582,6 +1172,8 @@ CREATE TABLE public.contracts (
     credit_limit NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     interest_rate NUMERIC(5, 2) NOT NULL,
     start_date DATE NOT NULL,
+    disburse_date DATE,
+    first_disburse_date DATE,
     term_months INT,
     due_day INT CHECK (due_day IS NULL OR due_day IN (5, 15, 25)),
     payment_frequency payment_frequency NOT NULL DEFAULT 'MONTHLY',
@@ -589,6 +1181,7 @@ CREATE TABLE public.contracts (
     tree_cut_option BOOLEAN NOT NULL DEFAULT FALSE,
     outstanding_principal NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     disbursed_amount NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    installment_amount NUMERIC(15, 2),
     status contract_status NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     planting_type VARCHAR(50),
@@ -614,6 +1207,10 @@ CREATE TABLE public.disbursements (
 );
 
 -- 4. Create scheduled_payments table (Statements)
+-- Note: If you have an existing table, run these SQL commands to add the columns:
+-- ALTER TABLE public.scheduled_payments ADD COLUMN IF NOT EXISTS pending_disbursement NUMERIC(15, 2) DEFAULT 0.00;
+-- ALTER TABLE public.scheduled_payments ADD COLUMN IF NOT EXISTS priority INT DEFAULT 1;
+-- ALTER TABLE public.scheduled_payments ADD COLUMN IF NOT EXISTS accrued_interest NUMERIC(15, 2) DEFAULT 0.00;
 CREATE TABLE public.scheduled_payments (
     id VARCHAR(100) PRIMARY KEY,
     contract_id VARCHAR(100) REFERENCES public.contracts(id) ON DELETE CASCADE,
@@ -635,10 +1232,15 @@ CREATE TABLE public.scheduled_payments (
     total_paid NUMERIC(15, 2) DEFAULT 0.00,
     
     status statement_status NOT NULL DEFAULT 'NOT_PAID',
-    last_updated DATE NOT NULL DEFAULT CURRENT_DATE
+    last_updated DATE NOT NULL DEFAULT CURRENT_DATE,
+    pending_disbursement NUMERIC(15, 2) DEFAULT 0.00,
+    priority INT DEFAULT 1,
+    accrued_interest NUMERIC(15, 2) DEFAULT 0.00
 );
 
 -- 5. Create repayments table
+-- Note: If you have an existing table, run this SQL command to add the column:
+-- ALTER TABLE public.repayments ADD COLUMN outstanding_principal NUMERIC(15, 2) DEFAULT 0.00;
 CREATE TABLE public.repayments (
     id VARCHAR(100) PRIMARY KEY,
     contract_id VARCHAR(100) REFERENCES public.contracts(id) ON DELETE CASCADE,
@@ -651,6 +1253,24 @@ CREATE TABLE public.repayments (
     applied_principal NUMERIC(15, 2) DEFAULT 0.00,
     applied_vat NUMERIC(15, 2) DEFAULT 0.00,
     distribution_details JSONB,
+    outstanding_principal NUMERIC(15, 2) DEFAULT 0.00,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 6. Create daily_accrued_interests table (ตารางบันทึกดอกเบี้ยคงค้างรายวัน)
+CREATE TABLE public.daily_accrued_interests (
+    id VARCHAR(100) PRIMARY KEY,
+    contract_id VARCHAR(100) REFERENCES public.contracts(id) ON DELETE CASCADE,
+    term_number INT NOT NULL,
+    seq INT NOT NULL,
+    entry_date DATE NOT NULL,
+    principal_balance NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    interest_rate NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
+    daily_interest NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    accumulated_interest NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    amount_paid NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    outstanding_interest NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(20) NOT NULL DEFAULT 'NOT_PAID',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

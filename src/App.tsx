@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { initializeDB, getSupabaseSQLMigration, runDailyAudit } from './dbStore';
+import { initializeDB, getSupabaseSQLMigration, runDailyAudit, isSandboxActive, enterSandboxMode, exitSandboxMode, resetSandboxData } from './dbStore';
 import Dashboard from './components/Dashboard';
 import InputContract from './components/InputContract';
 import Disbursement from './components/Disbursement';
 import Statement from './components/Statement';
 import Repayment from './components/Repayment';
 import Parameters from './components/Parameters';
+import Accounting from './components/Accounting';
+import DbInspectorModal from './components/DbInspectorModal';
 import { 
   getSavedSupabaseConfig, 
   saveSupabaseConfig, 
@@ -35,11 +37,12 @@ import {
   AlertTriangle, 
   XCircle, 
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  BookOpen
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment' | 'parameters' | 'dashboard'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'input' | 'disbursement' | 'statement' | 'repayment' | 'parameters' | 'accounting'>('dashboard');
   const [showSqlPanel, setShowSqlPanel] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -58,6 +61,31 @@ export default function App() {
   const [missingTables, setMissingTables] = useState<string[]>([]);
   const [syncingState, setSyncingState] = useState<'idle' | 'pushing' | 'pulling' | 'done' | 'failed'>('idle');
   const [syncResultMsg, setSyncResultMsg] = useState('');
+
+  // Modal states
+  const [isDbInspectorOpen, setIsDbInspectorOpen] = useState(false);
+
+  // Sandbox Mode states
+  const [sandboxActive, setSandboxActive] = useState(isSandboxActive());
+
+  const handleToggleSandbox = (active: boolean) => {
+    if (active) {
+      enterSandboxMode();
+    } else {
+      exitSandboxMode();
+    }
+    setSandboxActive(active);
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  const handleResetSandbox = () => {
+    resetSandboxData();
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
 
   useEffect(() => {
     // Bootstrap db and run daily overdue audit on load
@@ -324,6 +352,19 @@ export default function App() {
               <SlidersHorizontal className={`w-4 h-4 shrink-0 ${activeTab === 'parameters' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
               {!isSidebarCollapsed && <span className="truncate">LMS Parameters</span>}
             </button>
+
+            <button
+              onClick={() => setActiveTab('accounting')}
+              title="Accounting Journal Entries"
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-[11px] lg:text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'accounting' 
+                  ? 'bg-[#F0F3F9] text-[#1463F3] font-bold' 
+                  : 'text-slate-500 hover:text-[#1D2023] hover:bg-slate-50'
+              } ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'}`}
+            >
+              <BookOpen className={`w-4 h-4 shrink-0 ${activeTab === 'accounting' ? 'text-[#1463F3]' : 'text-slate-400'}`} />
+              {!isSidebarCollapsed && <span className="truncate">Accounting บัญชี</span>}
+            </button>
           </div>
 
           {/* Group 3: SUPPORT */}
@@ -362,6 +403,40 @@ export default function App() {
                 </div>
               </div>
               <span className="text-slate-400 text-[9px]">↕</span>
+            </div>
+          )}
+
+          {/* Sandbox Toggle Option */}
+          {!isSidebarCollapsed && (
+            <div className="bg-amber-50/70 border border-amber-200/80 p-3 rounded-xl space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-amber-800 flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${sandboxActive ? 'bg-emerald-500' : 'bg-amber-400'} animate-pulse`}></span>
+                  โหมดทดสอบ {sandboxActive ? 'Active' : 'Off'}
+                </span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sandboxActive}
+                    onChange={(e) => handleToggleSandbox(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-normal">
+                จำลองข้อมูลสำหรับการทดลองเล่น รับชำระเงิน หรือคำนวณดอกเบี้ย โดยไม่กระทบฐานข้อมูลจริงบนคลาวด์
+              </p>
+              {sandboxActive && (
+                <button
+                  type="button"
+                  onClick={handleResetSandbox}
+                  className="w-full py-1 text-[9px] bg-amber-600 hover:bg-amber-700 text-white rounded font-bold cursor-pointer transition text-center uppercase tracking-wider"
+                  title="เริ่มทดสอบใหม่ ดึง snapshot ล่าสุดจาก DB ลง sandbox ใหม่"
+                >
+                  Reset Sandbox Data (คัดลอกจาก DB)
+                </button>
+              )}
             </div>
           )}
 
@@ -412,7 +487,16 @@ export default function App() {
           </div>
 
           {/* Right utility items */}
-          <div className="flex items-center space-x-5">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsDbInspectorOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              title="ตรวจสอบตารางข้อมูลดิบและค่า due_date จาก Database"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden sm:inline">Raw DB Inspector</span>
+            </button>
+
             {/* User Profile matching 'Young Alaska' from screenshot */}
             <div className="flex items-center space-x-3">
               <div className="text-right hidden sm:block">
@@ -482,7 +566,46 @@ export default function App() {
           >
             Parameters
           </button>
+          <button
+            onClick={() => setActiveTab('accounting')}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition ${activeTab === 'accounting' ? 'bg-[#F0F3F9] text-[#1463F3] font-extrabold' : 'hover:bg-slate-50'}`}
+          >
+            Accounting
+          </button>
         </div>
+
+        {/* Sandbox Global Warning Banner */}
+        {sandboxActive && (
+          <div className="bg-[#FFF9E6] border-b border-amber-200 px-4 py-2.5 flex items-center justify-between gap-4 text-xs shrink-0 select-none shadow-xs font-sans">
+            <div className="flex items-center space-x-2.5">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              <span className="text-amber-800 font-bold">
+                คุณกำลังใช้งาน [โหมดจำลองทดสอบ Sandbox 🔒]
+              </span>
+              <span className="text-amber-600 hidden sm:inline font-medium">
+                — ข้อมูลทั้งหมดถูกจำลองแยกออกมา คุณสามารถทดลองชำระเงิน เบิกถอน หรือลงระบบได้เต็มที่ โดยระบบจะไม่บันทึกลงคลาวด์จริง
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={handleResetSandbox}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition cursor-pointer"
+                title="ล้างข้อมูลจำลองและดึง snapshot ล่าสุดจาก DB ใหม่"
+              >
+                Reset Sandbox
+              </button>
+              <button
+                onClick={() => handleToggleSandbox(false)}
+                className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-[10px] font-bold transition cursor-pointer"
+              >
+                ออกจากโหมดจำลอง
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Body Stage Area */}
         <main className="flex-grow p-4 sm:p-5 lg:p-6 overflow-y-auto bg-[#F4F5F7]">
@@ -504,6 +627,7 @@ export default function App() {
               {activeTab === 'statement' && <Statement />}
               {activeTab === 'repayment' && <Repayment />}
               {activeTab === 'parameters' && <Parameters />}
+              {activeTab === 'accounting' && <Accounting />}
             </>
           )}
         </main>
@@ -798,6 +922,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Raw Database Inspector Modal */}
+      <DbInspectorModal
+        isOpen={isDbInspectorOpen}
+        onClose={() => setIsDbInspectorOpen(false)}
+      />
     </div>
   );
 }

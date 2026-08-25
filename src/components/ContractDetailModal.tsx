@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Contract, ScheduledPayment, Repayment, Disbursement } from '../types';
-import { getScheduledPayments, getRepayments, getDisbursements } from '../dbStore';
-import { generateInitialSchedule } from '../financialEngine';
+import { getScheduledPayments, getRepayments, getDisbursements, updateScheduledPaymentPendingDisbursement, getSystemDate, getFirstDisbursementDate } from '../dbStore';
+import { generateInitialSchedule, getDailyInterestLog } from '../financialEngine';
+import DetailedScheduleMatrix from './DetailedScheduleMatrix';
 import { 
   X, 
   Calendar, 
@@ -16,7 +17,9 @@ import {
   TrendingUp, 
   ShieldCheck, 
   Activity,
-  Calculator
+  Calculator,
+  Edit2,
+  Check
 } from 'lucide-react';
 
 interface ContractDetailModalProps {
@@ -29,10 +32,33 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [repayments, setRepayments] = useState<Repayment[]>([]);
   const [disbursements, setDisbursements] = useState<Disbursement[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'repayments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'repayments' | 'dailyInterest'>('overview');
+  const [scheduleMode, setScheduleMode] = useState<'matrix' | 'compact'>('matrix');
+  const [selectedLogTerm, setSelectedLogTerm] = useState<number>(1);
+  const [logAsOfDate, setLogAsOfDate] = useState<string>('');
+  
+  const [editingTermId, setEditingTermId] = useState<string | null>(null);
+  const [editingPendingValue, setEditingPendingValue] = useState<string>('');
+
+  const handleSavePendingDisbursement = (id: string) => {
+    const numericVal = parseFloat(editingPendingValue) || 0;
+    updateScheduledPaymentPendingDisbursement(id, numericVal);
+    
+    const conCid = (contract.id || '').trim().toUpperCase();
+    // Refresh local payments state
+    const allSchedules = getScheduledPayments();
+    const contractSchedules = allSchedules
+      .filter(s => (s.contractId || '').trim().toUpperCase() === conCid)
+      .sort((a, b) => a.termNumber - b.termNumber);
+    setPayments(contractSchedules);
+    
+    setEditingTermId(null);
+    setEditingPendingValue('');
+  };
 
   useEffect(() => {
     if (isOpen) {
+      const conCid = (contract.id || '').trim().toUpperCase();
       // Fetch latest from the store
       const allSchedules = getScheduledPayments();
       const allRepayments = getRepayments();
@@ -40,19 +66,27 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
       
       // Filter for this specific contract
       const contractSchedules = allSchedules
-        .filter(s => s.contractId === contract.id)
+        .filter(s => (s.contractId || '').trim().toUpperCase() === conCid)
         .sort((a, b) => a.termNumber - b.termNumber);
       
       const contractRepayments = allRepayments
-        .filter(r => r.contractId === contract.id)
+        .filter(r => (r.contractId || '').trim().toUpperCase() === conCid)
         .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
 
       const contractDisbursements = allDisbursements
-        .filter(d => d.contractId === contract.id);
+        .filter(d => (d.contractId || '').trim().toUpperCase() === conCid);
 
       setPayments(contractSchedules);
       setRepayments(contractRepayments);
       setDisbursements(contractDisbursements);
+
+      // Default term selection to term 1 of this contract
+      if (contractSchedules.length > 0) {
+        setSelectedLogTerm(contractSchedules[0].termNumber);
+      } else {
+        setSelectedLogTerm(1);
+      }
+      setLogAsOfDate(getSystemDate());
     }
   }, [isOpen, contract]);
 
@@ -83,10 +117,13 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
   const overdueSchedules = payments.filter(p => p.status === 'OVERDUE');
   const totalOverdueAmount = overdueSchedules.reduce((sum, p) => sum + (p.totalDue - p.totalPaid), 0);
 
+  const firstDisbursementDate = getFirstDisbursementDate(contract.id) || contract.firstDisburseDate || contract.disburseDate;
+
   const initialSchedule = React.useMemo(() => {
     const baseAmt = contract.productType === 'HP' ? contract.creditLimit : (contract.disbursedAmount || contract.creditLimit);
-    return generateInitialSchedule(contract, baseAmt, contract.startDate);
-  }, [contract]);
+    const disburseDate = firstDisbursementDate || contract.startDate;
+    return generateInitialSchedule(contract, baseAmt, disburseDate);
+  }, [contract, firstDisbursementDate]);
 
   // Philosophy of calculation
   const getInterestDescription = () => {
@@ -189,6 +226,15 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
             <Receipt className="w-4 h-4" />
             <span>3. ประวัติการตัดชำระจริง (Repayments History)</span>
           </button>
+          <button
+            onClick={() => setActiveTab('dailyInterest')}
+            className={`py-3 px-4 border-b-2 transition flex items-center space-x-1.5 cursor-pointer ${
+              activeTab === 'dailyInterest' ? 'border-[#1463F3] text-[#1463F3]' : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Calculator className="w-4 h-4" />
+            <span>4. บันทึกดอกเบี้ยรายวันสะสม (Daily Accrual Log)</span>
+          </button>
         </div>
 
         {/* Modal Scrollable Body */}
@@ -217,7 +263,7 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">ยอดยอดคงเหลือตามดิวค้าง</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">ยอดรอเรียกเก็บ</span>
                   <span className="text-lg font-bold text-rose-600 mt-1 block">
                     {formatThb(totalOutstandingDue)}
                   </span>
@@ -258,8 +304,14 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                       <strong className="text-slate-700 font-semibold block mt-0.5">{contract.customerPhone || 'ไม่ระบุ'}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 font-medium block">วันที่เริ่มทำสัญญา</span>
+                      <span className="text-slate-400 font-medium block">วันที่เซ็นสัญญา (Contract Date)</span>
                       <strong className="text-slate-700 font-semibold block mt-0.5 font-mono">{contract.startDate}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-medium block">วันที่เริ่มเบิกเงิน (เริ่มคิดดอกเบี้ย)</span>
+                      <strong className="text-emerald-700 font-semibold block mt-0.5 font-mono">
+                        {firstDisbursementDate || contract.startDate}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-slate-400 font-medium block">ระยะเวลาสัญญากู้</span>
@@ -269,6 +321,12 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                       <span className="text-slate-400 font-medium block">วันครบกำหนดดิวประจำงวด</span>
                       <strong className="text-slate-700 font-semibold block mt-0.5">ทุกวันที่ {contract.dueDay}</strong>
                     </div>
+                    {contract.installmentAmount !== undefined && contract.installmentAmount !== null && (
+                      <div>
+                        <span className="text-slate-400 font-medium block">ค่างวดผ่อนชำระ (Installment)</span>
+                        <strong className="text-emerald-700 font-extrabold block mt-0.5">{formatThb(contract.installmentAmount)}</strong>
+                      </div>
+                    )}
                     <div>
                       <span className="text-slate-400 font-medium block">อัตราดอกเบี้ยจริง (Effective Rate)</span>
                       <strong className="text-[#1463F3] font-extrabold block mt-0.5">{contract.interestRate}% ต่อปี</strong>
@@ -362,60 +420,225 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
 
           {activeTab === 'schedule' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500 font-semibold bg-white px-3 py-1.5 rounded-lg border">แผนค่างวดผ่อนชำระรวม: {payments.length} งวดหลัก</span>
-                <span className="font-bold text-slate-400">อัตราภาษีนำส่ง: {contract.productType === 'HP' ? 'มีภาษีมูลค่าเพิ่ม (VAT 7%)' : 'ได้รับการยกเว้นภาษีค่างวด'}</span>
+              {/* Summary Header Cards for Each Contract */}
+              {(() => {
+                const sysDate = getSystemDate();
+                let maxAgingDays = 0;
+                payments.forEach(p => {
+                  const unpaid = Math.max(0, p.totalDue - (p.principalPaid + p.interestPaid + p.vatPaid + p.penaltyPaid + p.trackingFeePaid));
+                  if (unpaid > 0 && p.status !== 'PAID') {
+                    const tMs = new Date(sysDate).getTime();
+                    const dMs = new Date(p.dueDate).getTime();
+                    const diff = Math.max(0, Math.ceil((tMs - dMs) / (1000 * 60 * 60 * 24)));
+                    if (diff > maxAgingDays) maxAgingDays = diff;
+                  }
+                });
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+                      <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">1. ยอดรวมค่างวดตามสัญญา</span>
+                      <span className="text-base font-extrabold text-slate-800 block mt-0.5">{formatThb(totalDueSum)}</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">รวม {payments.length} งวดผ่อน</span>
+                    </div>
+
+                    <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200 shadow-xs">
+                      <span className="text-emerald-700 font-bold block text-[10px] uppercase tracking-wider">2. จ่ายสะสมแล้ว (Total Paid)</span>
+                      <span className="text-base font-extrabold text-emerald-700 block mt-0.5">{formatThb(totalPaidSum)}</span>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block font-medium">ยอดเงินชำระคืนจริงทั้งหมด</span>
+                    </div>
+
+                    <div className="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200 shadow-xs">
+                      <span className="text-rose-700 font-bold block text-[10px] uppercase tracking-wider">3. ยังค้างชำระ (Outstanding Due)</span>
+                      <span className="text-base font-extrabold text-rose-700 block mt-0.5">{formatThb(totalOutstandingDue)}</span>
+                      <span className="text-[10px] text-rose-600 mt-0.5 block font-medium">ยอดคงค้างรอรับชำระ</span>
+                    </div>
+
+                    <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 shadow-xs">
+                      <span className="text-amber-800 font-bold block text-[10px] uppercase tracking-wider">4. ระยะค้างชำระ (Aging / DPD)</span>
+                      <span className="text-base font-extrabold text-amber-900 block mt-0.5">
+                        {maxAgingDays > 0 ? `ค้างสูงสุด ${maxAgingDays} วัน` : 'ปกติ (0 วัน)'}
+                      </span>
+                      <span className="text-[10px] text-amber-700 mt-0.5 block font-medium">
+                        งวดค้างชำระ: {overdueSchedules.length} งวด
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs pt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-700 font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs">
+                    📋 ตารางสรุปค่างวดสัญญา ({payments.length} งวดหลัก)
+                  </span>
+                  
+                  {/* Mode Toggle Buttons */}
+                  <div className="bg-slate-100 p-0.5 rounded-lg border border-slate-200 flex items-center font-bold text-[11px]">
+                    <button
+                      onClick={() => setScheduleMode('matrix')}
+                      className={`px-3 py-1 rounded-md transition ${scheduleMode === 'matrix' ? 'bg-[#1463F3] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      ตาราง Plan vs Actual (9 หมวดหมู่)
+                    </button>
+                    <button
+                      onClick={() => setScheduleMode('compact')}
+                      className={`px-3 py-1 rounded-md transition ${scheduleMode === 'compact' ? 'bg-[#1463F3] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      ตารางสรุปย่อ (Standard)
+                    </button>
+                  </div>
+                </div>
+
+                <span className="font-bold text-slate-500 text-[11px]">
+                  อัตราภาษีนำส่ง: {contract.productType === 'HP' ? 'มีภาษีมูลค่าเพิ่ม (VAT 7%)' : 'ได้รับการยกเว้นภาษีค่างวด'}
+                </span>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+              {scheduleMode === 'matrix' ? (
+                <DetailedScheduleMatrix
+                  contract={contract}
+                  schedules={payments}
+                  repayments={repayments}
+                />
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
-                        <th className="px-3 py-3 text-center border-r border-slate-200/30">งวดที่</th>
-                        <th className="px-3 py-3 border-r border-slate-200/30">วันครบกำหนด (Due Date)</th>
-                        <th className="px-3 py-3 text-right bg-blue-50/40 text-[#1463F3] font-bold border-r border-slate-200/30 font-sans">เงินต้นที่เบิก (Disbursed)</th>
-                        <th className="px-3 py-3 text-right border-r border-slate-200/30 font-sans">เงินต้นค่างวด (Principal)</th>
-                        <th className="px-3 py-3 text-right border-r border-slate-200/30 font-sans">ดอกเบี้ยคำนวณ (Interest)</th>
-                        <th className="px-3 py-3 text-right border-r border-slate-200/30 font-sans">ภาษีมูลค่าเพิ่ม (VAT)</th>
-                        <th className="px-3 py-3 text-right text-rose-500 border-r border-slate-200/30 font-sans">เบี้ยปรับสะสม</th>
-                        <th className="px-3 py-3 text-right text-rose-500 border-r border-slate-200/30 font-sans">ค่าติดตามทวงถาม</th>
-                        <th className="px-3 py-3 text-right text-[#1463F3] border-r border-slate-200/30 font-sans">ยอดรวมต้องจ่าย</th>
-                        <th className="px-3 py-3 text-right text-emerald-600 border-r border-slate-200/30 font-sans">ชำระสะสมแล้ว</th>
-                        <th className="px-3 py-3 text-right bg-emerald-50/20 text-emerald-800 font-bold border-r border-slate-200/30 font-sans">เงินต้นคงเหลือ (Balance)</th>
+                      <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="px-3 py-3 text-center border-r border-slate-200/50">งวดที่</th>
+                        <th className="px-3 py-3 border-r border-slate-200/50">วันครบกำหนด (Due Date)</th>
+                        <th className="px-3 py-3 text-right bg-blue-50/40 text-[#1463F3] font-bold border-r border-slate-200/50 font-sans">เบิกเงินต้น / ยอดรอเบิก</th>
+                        <th className="px-3 py-3 text-right border-r border-slate-200/50 font-sans">เงินต้นค่างวด</th>
+                        <th className="px-3 py-3 text-right border-r border-slate-200/50 font-sans">ดอกเบี้ยคำนวณ</th>
+                        <th className="px-3 py-3 text-right text-[#1463F3] border-r border-slate-200/50 font-sans">ยอดรวมต้องจ่าย</th>
+                        <th className="px-3 py-3 text-right text-emerald-700 bg-emerald-50/30 border-r border-slate-200/50 font-sans">จ่ายเท่าไหร่</th>
+                        <th className="px-3 py-3 text-right text-rose-700 bg-rose-50/30 border-r border-slate-200/50 font-sans">ยังค้างเท่าไหร่</th>
+                        <th className="px-3 py-3 text-center text-amber-800 bg-amber-50/30 border-r border-slate-200/50 font-sans">Aging (กี่วัน)</th>
+                        <th className="px-3 py-3 text-right bg-emerald-50/20 text-emerald-800 font-bold border-r border-slate-200/50 font-sans">เงินต้นคงเหลือ (Balance)</th>
                         <th className="px-3 py-3 text-center font-sans">สถานะ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-150 text-slate-655 font-medium font-mono text-[11px]">
                       {payments.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="p-8 text-center text-slate-400">
+                          <td colSpan={11} className="p-8 text-center text-slate-400">
                             ไม่พบตารางผ่อนชำระในฐานข้อมูล กรุณาไปทำรายการสร้างหรืออนุมัติในหน้าเบิกจ่ายเงินกู้
                           </td>
                         </tr>
                       ) : (
                         (() => {
                           const sortedSchedules = [...payments].sort((a, b) => a.termNumber - b.termNumber);
+                          const sysDate = getSystemDate();
+
                           return sortedSchedules.map(sch => {
                             const totalPaidInTerm = sch.principalPaid + sch.interestPaid + sch.vatPaid + sch.penaltyPaid + sch.trackingFeePaid;
-                            const initSchTerm = initialSchedule.find(i => i.termNumber === sch.termNumber);
+                            const termOutstanding = Math.max(0, sch.totalDue - totalPaidInTerm);
                             
+                            // Aging calculation
+                            let agingDays = 0;
+                            if (termOutstanding > 0 && sch.status !== 'PAID') {
+                              const tMs = new Date(sysDate).getTime();
+                              const dMs = new Date(sch.dueDate).getTime();
+                              agingDays = Math.max(0, Math.ceil((tMs - dMs) / (1000 * 60 * 60 * 24)));
+                            }
+
+                            const renderAgingCol = () => {
+                              if (sch.status === 'PAID' || termOutstanding <= 0) {
+                                return (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 inline-block whitespace-nowrap">
+                                    0 วัน (ชำระแล้ว)
+                                  </span>
+                                );
+                              }
+                              if (agingDays <= 0) {
+                                return (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block whitespace-nowrap">
+                                    0 วัน (ยังไม่ถึงดิว)
+                                  </span>
+                                );
+                              } else if (agingDays <= 30) {
+                                return (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 inline-block whitespace-nowrap">
+                                    ค้าง {agingDays} วัน
+                                  </span>
+                                );
+                              } else if (agingDays <= 60) {
+                                return (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-orange-50 text-orange-800 border border-orange-200 inline-block whitespace-nowrap">
+                                    ค้าง {agingDays} วัน
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-900 border border-rose-300 inline-block whitespace-nowrap animate-pulse">
+                                    ค้าง {agingDays} วัน
+                                  </span>
+                                );
+                              }
+                            };
+
                             const prevDueDate = sch.termNumber === 1 
                               ? contract.startDate 
                               : sortedSchedules.find(p => p.termNumber === sch.termNumber - 1)?.dueDate || contract.startDate;
 
-                            const termDisbursedRecs = disbursements.filter(d => {
-                              if (sch.termNumber === 1) {
-                                return d.disburseDate <= sch.dueDate;
-                              } else {
-                                return d.disburseDate > prevDueDate && d.disburseDate <= sch.dueDate;
+                            const addDays = (dStr: string | null | undefined, days: number): string => {
+                              if (!dStr) return '';
+                              try {
+                                const d = new Date(dStr);
+                                if (isNaN(d.getTime())) return dStr;
+                                d.setDate(d.getDate() + days);
+                                return d.toISOString().split('T')[0];
+                              } catch (e) {
+                                return dStr;
                               }
-                            });
-                            const termDisbursedAmount = termDisbursedRecs.reduce((sum, d) => sum + Number(d.amount), 0);
+                            };
 
-                            const cumulativeDisburbed = disbursements
-                              .filter(d => d.disburseDate <= sch.dueDate)
-                              .reduce((sum, d) => sum + Number(d.amount), 0);
+                            const bufferDays = contract.paymentFrequency === 'ANNUAL' ? 15 : 0;
+                            const maxDate = sch.dueDate ? addDays(sch.dueDate, bufferDays) : '';
+                            const minDate = sch.termNumber === 1 ? '' : (prevDueDate ? addDays(prevDueDate, bufferDays) : '');
+
+                            const contractCid = (contract.id || '').trim().toUpperCase();
+
+                            const contractDisbursements = disbursements
+                              .filter(d => (d.contractId || '').trim().toUpperCase() === contractCid)
+                              .sort((a, b) => new Date(a.disburseDate).getTime() - new Date(b.disburseDate).getTime());
+
+                            const termDisbursedRecs = contractDisbursements.filter((d, idx) => {
+                              if (d.batchNumber && Number(d.batchNumber) > 0) {
+                                return Number(d.batchNumber) === sch.termNumber;
+                              }
+                              if (idx === 0) {
+                                return sch.termNumber === 1;
+                              }
+                              if (sch.termNumber === 1) return false;
+                              if (!maxDate || !minDate) return false;
+                              return d.disburseDate > minDate && d.disburseDate <= maxDate;
+                            });
+
+                            let termDisbursedAmount = termDisbursedRecs.reduce((sum, d) => sum + Number(d.amount), 0);
+
+                            if (contractDisbursements.length === 0 && (contract.disbursedAmount || 0) > 0) {
+                              if (sch.termNumber === 1) {
+                                termDisbursedAmount = contract.disbursedAmount || 0;
+                              }
+                            }
+
+                            const cumulativeDisburbed = contractDisbursements.length > 0
+                              ? contractDisbursements
+                                  .filter((d, idx) => {
+                                    if (d.batchNumber && Number(d.batchNumber) > 0) {
+                                      return Number(d.batchNumber) <= sch.termNumber;
+                                    }
+                                    if (idx === 0) {
+                                      return true;
+                                    }
+                                    if (!maxDate) return false;
+                                    return d.disburseDate <= maxDate;
+                                  })
+                                  .reduce((sum, d) => sum + Number(d.amount), 0)
+                              : (contract.disbursedAmount || contract.creditLimit || 0);
 
                             const cumulativePrincipalDue = sortedSchedules
                               .filter(p => p.termNumber <= sch.termNumber)
@@ -430,51 +653,103 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
 
                             return (
                               <tr key={sch.id} className="hover:bg-slate-50/50 border-b border-slate-100 last:border-0 hover:text-slate-900 font-mono text-[11px]">
-                                <td className="px-2 py-2 text-center border-r border-slate-100/50 align-middle">
+                                <td className="px-2 py-2.5 text-center border-r border-slate-100/50 align-middle">
                                   <span className="bg-slate-100/90 text-slate-800 px-2 py-0.5 rounded font-extrabold text-[10px] inline-block">งวด {sch.termNumber}</span>
                                 </td>
-                                <td className="px-2 py-2 text-slate-600 font-bold border-r border-slate-100/50 align-middle">{sch.dueDate}</td>
-                                <td className="px-2 py-2 text-right font-bold text-[#1463F3] bg-blue-50/10 border-r border-slate-100/50 align-middle">
-                                  {termDisbursedAmount > 0 ? formatThb(termDisbursedAmount) : '-'}
+                                <td className="px-2 py-2.5 text-slate-600 font-bold border-r border-slate-100/50 align-middle">{sch.dueDate}</td>
+                                <td className="px-2 py-2.5 text-right bg-blue-50/10 border-r border-slate-100/50 align-middle">
+                                  {termDisbursedAmount > 0 ? (
+                                    <span className="block font-bold text-[#1463F3]">{formatThb(termDisbursedAmount)}</span>
+                                  ) : (
+                                    <span className="block text-slate-400 font-bold">-</span>
+                                  )}
+                                  
+                                  {editingTermId === sch.id ? (
+                                    <div className="flex items-center justify-end gap-1 mt-1">
+                                      <input
+                                        type="number"
+                                        className="w-20 px-1 py-0.5 text-right border border-blue-400 rounded bg-white text-[10px] font-sans font-bold text-slate-800 focus:outline-none"
+                                        value={editingPendingValue}
+                                        onChange={(e) => setEditingPendingValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleSavePendingDisbursement(sch.id);
+                                          if (e.key === 'Escape') {
+                                            setEditingTermId(null);
+                                            setEditingPendingValue('');
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button 
+                                        onClick={() => handleSavePendingDisbursement(sch.id)}
+                                        className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"
+                                        title="บันทึก"
+                                      >
+                                        <Check size={10} />
+                                      </button>
+                                      <button 
+                                        onClick={() => {
+                                          setEditingTermId(null);
+                                          setEditingPendingValue('');
+                                        }}
+                                        className="p-0.5 text-rose-600 hover:bg-rose-50 rounded"
+                                        title="ยกเลิก"
+                                      >
+                                        <X size={10} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-end gap-1 group mt-0.5">
+                                      <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">
+                                        รอเบิก: {formatThb(sch.pendingDisbursement || 0)}
+                                      </span>
+                                      <button 
+                                        onClick={() => {
+                                          setEditingTermId(sch.id);
+                                          setEditingPendingValue(String(sch.pendingDisbursement || 0));
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-[#1463F3] hover:bg-slate-100 rounded transition-opacity"
+                                        title="แก้ไขยอดรอเบิก"
+                                      >
+                                        <Edit2 size={10} />
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
-                                <td className="px-2 py-2 text-right border-r border-slate-100/50 align-middle">
+                                <td className="px-2 py-2.5 text-right border-r border-slate-100/50 align-middle">
                                   <span className="text-slate-700 block text-xs font-semibold">{formatThb(sch.principalDue)}</span>
-                                  {initSchTerm && (
-                                    <span className="block text-[9px] text-slate-400 font-semibold mt-0.5">แผนเดิม: {formatThb(initSchTerm.principalDue)}</span>
-                                  )}
-                                  <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จ่ายแล้ว: {formatThb(sch.principalPaid)}</span>
                                 </td>
-                                <td className="px-2 py-2 text-right border-r border-slate-100/50 align-middle">
+                                <td className="px-2 py-2.5 text-right border-r border-slate-100/50 align-middle">
                                   <span className="text-slate-700 block text-xs font-semibold">{formatThb(sch.interestDue)}</span>
-                                  {initSchTerm && (
-                                    <span className="block text-[9px] text-slate-400 font-semibold mt-0.5">แผนเดิม: {formatThb(initSchTerm.interestDue)}</span>
-                                  )}
-                                  <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จ่ายแล้ว: {formatThb(sch.interestPaid)}</span>
                                 </td>
-                                <td className="px-2 py-2 text-right text-slate-500 border-r border-slate-100/50 align-middle">
-                                  {sch.vatDue > 0 ? formatThb(sch.vatDue) : '-'}
-                                  {sch.vatDue > 0 && <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จ่ายแล้ว: {formatThb(sch.vatPaid)}</span>}
-                                </td>
-                                <td className="px-2 py-2 text-right text-rose-500 font-semibold border-r border-slate-100/50 align-middle">
-                                  {sch.penaltyDue > 0 ? formatThb(sch.penaltyDue) : '-'}
-                                  {sch.penaltyDue > 0 && <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จ่ายแล้ว: {formatThb(sch.penaltyPaid)}</span>}
-                                </td>
-                                <td className="px-2 py-2 text-right text-rose-500 font-semibold border-r border-slate-100/50 align-middle">
-                                  {sch.trackingFeeDue > 0 ? formatThb(sch.trackingFeeDue) : '-'}
-                                  {sch.trackingFeeDue > 0 && <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จ่ายแล้ว: {formatThb(sch.trackingFeePaid)}</span>}
-                                </td>
-                                <td className="px-2 py-2 text-right font-extrabold text-[#1463F3] border-r border-slate-100/50 align-middle">
+                                <td className="px-2 py-2.5 text-right font-extrabold text-[#1463F3] border-r border-slate-100/50 align-middle">
                                   <span className="block">{formatThb(sch.totalDue)}</span>
-                                  {initSchTerm && (
-                                    <span className="block text-[9px] text-slate-400 font-normal mt-0.5">แผนเดิม: {formatThb(initSchTerm.totalDue)}</span>
+                                </td>
+                                
+                                {/* จ่ายเท่าไหร่ */}
+                                <td className="px-2 py-2.5 text-right font-extrabold text-emerald-700 bg-emerald-50/20 border-r border-slate-100/50 align-middle">
+                                  {formatThb(totalPaidInTerm)}
+                                </td>
+
+                                {/* ยังค้างเท่าไหร่ */}
+                                <td className="px-2 py-2.5 text-right font-extrabold border-r border-slate-100/50 align-middle bg-rose-50/20">
+                                  {termOutstanding > 0 ? (
+                                    <span className="text-rose-700">{formatThb(termOutstanding)}</span>
+                                  ) : (
+                                    <span className="text-slate-400 font-bold">0.00 ฿</span>
                                   )}
                                 </td>
-                                <td className="px-2 py-2 text-right font-extrabold text-[#16a34a] bg-emerald-50/5 border-r border-slate-100/50 align-middle">{formatThb(totalPaidInTerm)}</td>
-                                <td className="px-2 py-2 text-right font-bold text-slate-700 bg-emerald-50/5 border-r border-slate-100/50 align-middle">
+
+                                {/* Aging (กี่วัน) */}
+                                <td className="px-2 py-2.5 text-center border-r border-slate-100/50 align-middle bg-amber-50/10">
+                                  {renderAgingCol()}
+                                </td>
+
+                                <td className="px-2 py-2.5 text-right font-bold text-slate-700 bg-emerald-50/5 border-r border-slate-100/50 align-middle">
                                   <span>{formatThb(remainingPrincipalProjected)}</span>
                                   <span className="block text-[9px] text-emerald-600 font-semibold mt-0.5">จริงเหลือ: {formatThb(remainingPrincipalActual)}</span>
                                 </td>
-                                <td className="px-2 py-2 text-center align-middle">{getStatusBadge(sch.status)}</td>
+                                <td className="px-2 py-2.5 text-center align-middle">{getStatusBadge(sch.status)}</td>
                               </tr>
                             );
                           });
@@ -484,6 +759,7 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                   </table>
                 </div>
               </div>
+              )}
             </div>
           )}
 
@@ -515,8 +791,8 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                           </td>
                         </tr>
                       ) : (
-                        repayments.map(r => (
-                          <tr key={r.id} className="hover:bg-slate-50/50 border-b border-slate-100 last:border-0 hover:text-slate-900">
+                        repayments.map((r, idx) => (
+                          <tr key={`${r.id}-${idx}`} className="hover:bg-slate-50/50 border-b border-slate-100 last:border-0 hover:text-slate-900">
                             <td className="px-3 py-2 text-[#1463F3] font-bold uppercase border-r border-slate-100">{r.receiptNo}</td>
                             <td className="px-3 py-2 text-center text-slate-600 font-semibold border-r border-slate-100">{r.paymentDate}</td>
                             <td className="px-3 py-2 text-right text-emerald-600 font-extrabold bg-emerald-50/10 border-r border-slate-100">{formatThb(r.amountPaid)}</td>
@@ -538,6 +814,106 @@ export default function ContractDetailModal({ isOpen, onClose, contract }: Contr
                           </tr>
                         ))
                       )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'dailyInterest' && (
+            <div className="space-y-4">
+              {/* Header Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2 text-xs">
+                <div className="flex items-center space-x-2 text-[#1463F3] font-bold">
+                  <Activity className="w-4 h-4" />
+                  <span className="text-sm">กลไกการคำนวณและบันทึกดอกเบี้ยรายวันสะสม (Daily Accrued Interest Audit Log)</span>
+                </div>
+                <p className="text-slate-700 leading-relaxed">
+                  ระบบคำนวณดอกเบี้ยรายวันสะสมจากเงินต้นคงเหลือจริง ณ สิ้นวัน (<code className="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-[#1463F3] font-mono">เงินต้นคงเหลือ × อัตราดอกเบี้ย% ÷ 365</code>) แล้วประมวลผลบันทึกลงในระบบทุกๆ วัน เมื่อลูกค้าทำการชำระเงินเข้ามา ระบบจะทำการตัดชำระแบบแนวนอน (Horizontal Cut) โดยนำเงินไปตัดยอดดอกเบี้ยคงค้างสะสมที่บันทึกไว้ ณ วันที่ชำระเงินก่อน แล้วจึงนำยอดเงินส่วนที่เหลือไปตัดลดเงินต้นคงค้างเพื่อลดการคิดดอกเบี้ยในวันถัดไปทันที
+                </p>
+              </div>
+
+              {/* Term Filter Bar */}
+              <div className="flex flex-wrap justify-between items-center bg-white p-3.5 rounded-xl border border-slate-200 text-xs gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-1.5">
+                    <label className="font-bold text-slate-700">เลือกดูรายงวด:</label>
+                    <select
+                      value={selectedLogTerm}
+                      onChange={(e) => setSelectedLogTerm(Number(e.target.value))}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-50 font-bold text-[#1463F3] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {payments.map(p => (
+                        <option key={p.id} value={p.termNumber}>
+                          งวดที่ {p.termNumber} (ดิว {p.dueDate}) {p.status === 'PAID' ? '✓ ชำระแล้ว' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <label className="font-bold text-slate-600 text-[11px]">คำนวณย้อนหลังถึงวันที่:</label>
+                    <input
+                      type="date"
+                      value={logAsOfDate}
+                      onChange={(e) => setLogAsOfDate(e.target.value)}
+                      className="font-mono font-bold text-[#1463F3] bg-transparent border-none focus:outline-none text-xs"
+                    />
+                  </div>
+                </div>
+
+                {(() => {
+                  const dailyLogs = getDailyInterestLog(contract, selectedLogTerm, payments, repayments, logAsOfDate);
+                  const totalCumInt = dailyLogs.length > 0 ? dailyLogs[dailyLogs.length - 1].cumulativeInterest : 0;
+                  return (
+                    <div className="flex items-center space-x-4">
+                      <span className="text-slate-500 font-semibold">จำนวนวันเดินดอกเบี้ย: <strong className="text-slate-800 font-mono">{dailyLogs.length} วัน</strong></span>
+                      <span className="text-[#1463F3] font-bold bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
+                        ดอกเบี้ยสะสม ณ วันที่เลือก: <strong className="font-mono text-sm">{formatThb(totalCumInt)}</strong>
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Daily Log Table */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px] sticky top-0 bg-slate-100 z-10">
+                        <th className="px-3 py-2.5 text-center border-r border-slate-200">ลำดับ</th>
+                        <th className="px-3 py-2.5 text-center border-r border-slate-200">วันที่ (Date)</th>
+                        <th className="px-3 py-2.5 text-right border-r border-slate-200 font-mono">เงินต้นคงเหลือ ณ สิ้นวัน</th>
+                        <th className="px-3 py-2.5 text-center border-r border-slate-200">อัตราดอกเบี้ยต่อปี</th>
+                        <th className="px-3 py-2.5 text-right border-r border-slate-200 text-[#1463F3] font-mono">ดอกเบี้ยเกิดขึ้นประจำวัน</th>
+                        <th className="px-3 py-2.5 text-right text-emerald-700 font-mono bg-emerald-50/30">ดอกเบี้ยคงค้างสะสมรวม</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 text-slate-700 font-mono text-[11px]">
+                      {(() => {
+                        const dailyLogs = getDailyInterestLog(contract, selectedLogTerm, payments, repayments, logAsOfDate);
+                        if (dailyLogs.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="p-8 text-center text-slate-400 font-sans">
+                                ไม่อยู่ในงวดช่วงเดินดอกเบี้ย หรือยังไม่ถึงกำหนดเริ่มต้นของงวดนี้
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return dailyLogs.map((log, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50/30 transition">
+                            <td className="px-3 py-1.5 text-center text-slate-400 font-sans border-r border-slate-100">{idx + 1}</td>
+                            <td className="px-3 py-1.5 text-center font-bold text-slate-800 border-r border-slate-100">{log.date}</td>
+                            <td className="px-3 py-1.5 text-right font-semibold text-slate-700 border-r border-slate-100">{formatThb(log.principal)}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-500 border-r border-slate-100">{log.dailyRate}%</td>
+                            <td className="px-3 py-1.5 text-right font-bold text-[#1463F3] border-r border-slate-100">{formatThb(log.dailyInterest)}</td>
+                            <td className="px-3 py-1.5 text-right font-extrabold text-emerald-800 bg-emerald-50/10">{formatThb(log.cumulativeInterest)}</td>
+                          </tr>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getContracts, getDisbursements, getScheduledPayments, getRepayments } from '../dbStore';
+import { getContracts, getDisbursements, getScheduledPayments, getRepayments, getSystemDate, saveSystemDate, runHistoricalDailyAudit } from '../dbStore';
+import { generateAndSyncDailyAccruedToSupabase } from '../supabaseSync';
+import { getSupabaseClient } from '../supabaseClient';
 import { Contract, Disbursement, ScheduledPayment, Repayment } from '../types';
 import Chart from 'react-apexcharts';
 import { 
@@ -13,10 +15,11 @@ import {
   ArrowUpRight,
   Filter,
   CheckSquare,
-  FileText
+  FileText,
+  Calculator
 } from 'lucide-react';
 
-const SYSTEM_DATE = '2026-05-22';
+// Dynamic system date is now retrieved from dbStore
 
 // Clean reusable SvgAreaChart component using ApexCharts
 interface ChartDataPoint {
@@ -249,7 +252,7 @@ function SvgAreaChart({
         <div className="pt-2 h-[190px]">
           {isMounted && (
             <Chart
-              key={`mix-chart-${dataKey}-${title}-${data.length}-${data.map(d => d.date).join(',')}`}
+              key={`mix-chart-${dataKey}-${title}`}
               options={chartOptions}
               series={series}
               type="line"
@@ -356,7 +359,7 @@ function BeautifulDoughnut({
           <div className="relative w-[180px] h-[180px] flex-shrink-0 flex items-center justify-center">
             {isMounted && (
               <Chart
-                key={`donut-${title}-${segments.map(s => s.label).join(',')}-${segments.map(s => s.amount).join(',')}`}
+                key={`donut-${title}`}
                 options={chartOptions}
                 series={series}
                 type="donut"
@@ -412,13 +415,13 @@ const getAggregatedContractData = (contractsList: Contract[], unit: 'YEAR' | 'QU
   }
 
   // Sort chronologically by startDate
-  const sorted = [...contractsList].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const sorted = [...contractsList].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
 
   // Determine period keys
   const map: { [periodKey: string]: { limit: number, outstanding: number } } = {};
   
   sorted.forEach(c => {
-    const startDate = c.startDate || '2026-05-22';
+    const startDate = c.startDate || getSystemDate();
     const parts = startDate.split('-');
     if (parts.length < 3) return;
     const year = parts[0];
@@ -499,6 +502,7 @@ export default function Dashboard() {
   const [disbursements, setDisbursements] = useState<Disbursement[]>([]);
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [repayments, setRepayments] = useState<Repayment[]>([]);
+  const [systemDate, setSystemDate] = useState(getSystemDate());
   
   // Custom Filters matching spec: Year, Quarter, Month & Product Filter
   const [productFilter, setProductFilter] = useState<'ALL' | 'HP' | 'LOAN'>('ALL');
@@ -507,6 +511,7 @@ export default function Dashboard() {
   // Dashboard view selection: 'LIMIT_AGING' = Dashboard 1, 'PLANTING' = Dashboard 2
   const [activeTab, setActiveTab] = useState<'LIMIT_AGING' | 'PLANTING'>('LIMIT_AGING');
   const [triggerUpdate, setTriggerUpdate] = useState(0);
+  const [auditMsg, setAuditMsg] = useState<string | null>(null);
 
   // Load backend arrays on mount and upon manual refresh
   useEffect(() => {
@@ -515,6 +520,17 @@ export default function Dashboard() {
     setPayments(getScheduledPayments());
     setRepayments(getRepayments());
   }, [triggerUpdate]);
+
+  useEffect(() => {
+    const handleDateChanged = () => {
+      setSystemDate(getSystemDate());
+      setTriggerUpdate(prev => prev + 1);
+    };
+    window.addEventListener('system-date-changed', handleDateChanged);
+    return () => {
+      window.removeEventListener('system-date-changed', handleDateChanged);
+    };
+  }, []);
 
   const handleRefresh = () => {
     setTriggerUpdate(prev => prev + 1);
@@ -526,8 +542,8 @@ export default function Dashboard() {
     return c.productType === productFilter;
   });
 
-  const filteredContractIds = new Set(filteredContracts.map(c => c.id));
-  const filteredDisbursements = disbursements.filter(d => filteredContractIds.has(d.contractId));
+  const filteredContractIds = new Set(filteredContracts.map(c => (c.id || '').trim().toUpperCase()));
+  const filteredDisbursements = disbursements.filter(d => filteredContractIds.has((d.contractId || '').trim().toUpperCase()));
 
   // ==========================================================
   // --- DASHBOARD 1: OVERALL PORFOLIO & AGING DATA PREP -------
@@ -539,7 +555,7 @@ export default function Dashboard() {
 
   // Compute Days Past Due (DPD) for each contract to build the Aging Report
   const getCreditAgingAnalysis = () => {
-    const today = new Date(SYSTEM_DATE);
+    const today = new Date(systemDate);
     
     let bucket_normal = 0;
     let bucket_1_30 = 0;
@@ -554,7 +570,8 @@ export default function Dashboard() {
     let count_90plus = 0;
 
     filteredContracts.forEach(c => {
-      const contractSchedules = payments.filter(p => p.contractId === c.id);
+      const cCid = (c.id || '').trim().toUpperCase();
+      const contractSchedules = payments.filter(p => (p.contractId || '').trim().toUpperCase() === cCid);
       const overdueSchedules = contractSchedules.filter(p => p.status === 'OVERDUE');
       
       let maxDpd = 0;
@@ -660,7 +677,7 @@ export default function Dashboard() {
             Dashboard Summary
           </h2>
           <p className="text-xs text-slate-400 mt-1 font-medium font-sans">
-            การคำนวณอิงเวลาจริง {SYSTEM_DATE} เพื่อประมวลสถิติและวิเคราะห์ลดต้นลดดอกสะสม
+            การคำนวณอิงเวลาจริง {systemDate} เพื่อประมวลสถิติและวิเคราะห์ลดต้นลดดอกสะสม
           </p>
         </div>
 
@@ -694,17 +711,55 @@ export default function Dashboard() {
 
           <div className="flex items-center space-x-1.5 bg-white border border-[#E5E7EB] px-3.5 py-1.5 rounded-xl shadow-3xs">
             <span className="text-slate-400">📅 SYSTEM:</span>
-            <span className="font-semibold text-[#1463F3]">{SYSTEM_DATE}</span>
+            <input
+              type="date"
+              value={systemDate}
+              onChange={(e) => {
+                const newDate = e.target.value;
+                if (newDate) {
+                  saveSystemDate(newDate);
+                  setSystemDate(newDate);
+                  window.dispatchEvent(new Event('system-date-changed'));
+                }
+              }}
+              className="font-bold text-[#1463F3] bg-transparent border-none focus:outline-none cursor-pointer text-xs"
+            />
           </div>
 
           <button
+            onClick={async () => {
+              const res = runHistoricalDailyAudit();
+              const client = getSupabaseClient();
+              await generateAndSyncDailyAccruedToSupabase(client);
+              setAuditMsg(`ประมวลผลคำนวณดอกเบี้ยรายวันย้อนหลังและบันทึกลง Supabase สำเร็จ! (${res.updatedContractsCount} สัญญา, ${res.updatedSchedulesCount} งวด)`);
+              setTriggerUpdate(prev => prev + 1);
+              setTimeout(() => setAuditMsg(null), 5000);
+            }}
+            className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl shadow-3xs transition cursor-pointer font-sans text-xs font-bold"
+            title="คำนวณประมวลผลดอกเบี้ยสะสมรายวันย้อนหลังสำหรับทุกสัญญาจนถึงปัจจุบัน และบันทึกลงฐานข้อมูล Supabase"
+          >
+            <Calculator className="w-3.5 h-3.5" />
+            <span>คำนวณดอกเบี้ยย้อนหลัง</span>
+          </button>
+
+          <button
             onClick={handleRefresh}
-            className="flex items-center space-x-1.5 bg-[#1463F3] text-white px-3.5 py-1.5 rounded-xl shadow-3xs hover:bg-[#1150c7] transition cursor-pointer font-sans"
+            className="flex items-center space-x-1.5 bg-[#1463F3] text-white px-3.5 py-1.5 rounded-xl shadow-3xs hover:bg-[#1150c7] transition cursor-pointer font-sans text-xs font-semibold"
           >
             <span>รีเฟรช</span>
           </button>
         </div>
       </div>
+
+      {auditMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckSquare className="w-4 h-4 text-emerald-600" />
+            <span>{auditMsg}</span>
+          </div>
+          <button onClick={() => setAuditMsg(null)} className="text-emerald-500 hover:text-emerald-800 font-extrabold cursor-pointer">✕</button>
+        </div>
+      )}
 
       {/* Dynamic Filter Controls Panel */}
       <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

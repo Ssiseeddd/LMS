@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { getContracts, addContract } from '../dbStore';
 import { Contract, ProductType, PaymentFrequency } from '../types';
-import { Search, Plus, Download, HelpCircle } from 'lucide-react';
+import { Search, Plus, Download, HelpCircle, Save, RefreshCw, CheckCircle2, Trash2 } from 'lucide-react';
 import ContractDetailModal from './ContractDetailModal';
+import { generateAndSyncDailyAccruedToSupabase, clearAccruedInterestInSupabaseAndLocal } from '../supabaseSync';
+import { getSupabaseClient } from '../supabaseClient';
 
 export default function InputContract() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchName, setSearchName] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncingDaily, setIsSyncingDaily] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // Detail Modal states
   const [selectedConForDetail, setSelectedConForDetail] = useState<Contract | null>(null);
@@ -24,7 +28,9 @@ export default function InputContract() {
   const [creditLimit, setCreditLimit] = useState<number>(100000);
   const [interestRate, setInterestRate] = useState<number>(8);
   const [startDate, setStartDate] = useState('2026-01-01');
+  const [disburseDate, setDisburseDate] = useState('2026-01-01');
   const [termMonths, setTermMonths] = useState<number>(12);
+  const [installmentAmount, setInstallmentAmount] = useState<number | ''>('');
   const [dueDay, setDueDay] = useState<5 | 15 | 25>(5);
   const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>('MONTHLY');
   const [serviceFee, setServiceFee] = useState<number>(0);
@@ -37,6 +43,12 @@ export default function InputContract() {
   const [plantingProvince, setPlantingProvince] = useState('');
   const [plantingDistrict, setPlantingDistrict] = useState('');
   const [plantingSubdistrict, setPlantingSubdistrict] = useState('');
+
+  // Snapshot/Migration states
+  const [isSnapshotEnabled, setIsSnapshotEnabled] = useState<boolean>(false);
+  const [snapshotDisbursed, setSnapshotDisbursed] = useState<number>(100000);
+  const [snapshotOutstanding, setSnapshotOutstanding] = useState<number>(80000);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     setContracts(getContracts());
@@ -63,6 +75,18 @@ export default function InputContract() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (isSnapshotEnabled) {
+      if (Number(snapshotDisbursed) <= 0) {
+        setFormError('ยอดเงินกู้เบิกรับจริงตั้งต้นต้องมากกว่า 0 บาท');
+        return;
+      }
+      if (Number(snapshotOutstanding) > Number(snapshotDisbursed)) {
+        setFormError('ยอดเงินต้นคงเหลือ ณ ปัจจุบัน ต้องไม่มากกว่ายอดเบิกรับจริงตั้งต้น');
+        return;
+      }
+    }
+    setFormError('');
+
     // Auto generate clean ID if empty
     const prefix = productType === 'HP' ? 'HP' : 'LN';
     const finalId = id.trim() || `${prefix}-${new Date().getFullYear()}-${String(contracts.length + 1).padStart(4, '0')}`;
@@ -77,11 +101,16 @@ export default function InputContract() {
       creditLimit: Number(creditLimit),
       interestRate: Number(interestRate),
       startDate,
+      firstDisburseDate: disburseDate || startDate,
+      disburseDate: disburseDate || startDate,
       termMonths: Number(termMonths),
       dueDay,
       paymentFrequency,
       serviceFee: Number(serviceFee),
       treeCutOption,
+      installmentAmount: installmentAmount !== '' ? Number(installmentAmount) : undefined,
+      disbursedAmount: isSnapshotEnabled ? Number(snapshotDisbursed) : undefined,
+      outstandingPrincipal: isSnapshotEnabled ? Number(snapshotOutstanding) : undefined,
       ...(productType === 'LOAN' && paymentFrequency === 'ANNUAL' ? {
         plantingType,
         plantingAreaRai: plantingAreaRai !== '' ? Number(plantingAreaRai) : undefined,
@@ -108,7 +137,9 @@ export default function InputContract() {
     setCreditLimit(100000);
     setInterestRate(8);
     setStartDate('2026-01-01');
+    setDisburseDate('2026-01-01');
     setTermMonths(12);
+    setInstallmentAmount('');
     setDueDay(5);
     setPaymentFrequency('MONTHLY');
     setServiceFee(0);
@@ -119,13 +150,17 @@ export default function InputContract() {
     setPlantingProvince('');
     setPlantingDistrict('');
     setPlantingSubdistrict('');
+    setIsSnapshotEnabled(false);
+    setSnapshotDisbursed(100000);
+    setSnapshotOutstanding(80000);
+    setFormError('');
   };
 
   // Export to CSV
   const handleExportCSV = () => {
-    const headers = 'Contract ID,Customer Name,Tax ID,Phone,Product Type,Freq,Credit Limit,Rate %,Start Date,Terms,Status\n';
+    const headers = 'Contract ID,Customer Name,Tax ID,Phone,Product Type,Freq,Credit Limit,Rate %,Start Date,Disburse Date,Terms,Status\n';
     const rows = contracts.map(c => 
-      `"${c.id}","${c.customerName}","${c.customerTaxId}","${c.customerPhone}","${c.productType}","${c.paymentFrequency}",${c.creditLimit},${c.interestRate},"${c.startDate}",${c.termMonths},"${c.status}"`
+      `"${c.id}","${c.customerName}","${c.customerTaxId}","${c.customerPhone}","${c.productType}","${c.paymentFrequency}",${c.creditLimit},${c.interestRate},"${c.startDate}","${c.firstDisburseDate || c.disburseDate || c.startDate}",${c.termMonths},"${c.status}"`
     ).join('\n');
 
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -136,6 +171,34 @@ export default function InputContract() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleSyncDailyAccrued = async () => {
+    setIsSyncingDaily(true);
+    try {
+      const client = getSupabaseClient();
+      const count = await generateAndSyncDailyAccruedToSupabase(client);
+      setSyncMessage(`คำนวณดอกเบี้ยค้างรับสะสม (Accrued Interest) สำหรับทุกสัญญา และบันทึกลงตาราง Scheduled Payments เรียบร้อยแล้ว รวม ${count} งวดสัญญา`);
+      setTimeout(() => setSyncMessage(null), 8000);
+    } catch (err: any) {
+      setSyncMessage(`เกิดข้อผิดพลาดในการคำนวณบันทึกดอกเบี้ย: ${err?.message || err}`);
+    } finally {
+      setIsSyncingDaily(false);
+    }
+  };
+
+  const handleClearAccrued = async () => {
+    setIsSyncingDaily(true);
+    try {
+      const client = getSupabaseClient();
+      const count = await clearAccruedInterestInSupabaseAndLocal(client);
+      setSyncMessage(`เคลียร์ค่า accrued_interest ในตาราง scheduled_payments บน Supabase และ Local Storage ให้เป็น 0 เรียบร้อยแล้ว (รวม ${count} งวด)`);
+      setTimeout(() => setSyncMessage(null), 8000);
+    } catch (err: any) {
+      setSyncMessage(`เกิดข้อผิดพลาดในการเคลียร์ค่า: ${err?.message || err}`);
+    } finally {
+      setIsSyncingDaily(false);
+    }
   };
 
   // Format currencies
@@ -152,6 +215,13 @@ export default function InputContract() {
 
   return (
     <div className="space-y-6 font-sans">
+      {syncMessage && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center gap-3 text-xs font-bold shadow-xs animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{syncMessage}</span>
+        </div>
+      )}
+
       {/* Search and Action Bar */}
       <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -177,7 +247,25 @@ export default function InputContract() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleSyncDailyAccrued}
+            disabled={isSyncingDaily}
+            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+          >
+            {isSyncingDaily ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span>⚡ Run ดอกเบี้ยย้อนหลัง & บันทึกลง Supabase</span>
+          </button>
+
+          <button
+            onClick={handleClearAccrued}
+            disabled={isSyncingDaily}
+            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+          >
+            {isSyncingDaily ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            <span>🗑️ เคลียร์ accrued_interest เป็น 0 (Supabase)</span>
+          </button>
+
           <button
             onClick={handleExportCSV}
             className="flex items-center space-x-1.5 px-4 py-2.5 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
@@ -384,7 +472,7 @@ export default function InputContract() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-sans">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs font-sans">
                 <div>
                   <label className="block text-slate-650 font-bold mb-1">วงเงินกู้สูงสุด (Credit Limit) *</label>
                   <input
@@ -423,20 +511,53 @@ export default function InputContract() {
                     className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 font-bold font-mono text-slate-800"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-slate-650 font-bold mb-1">ค่างวดผ่อนชำระ (Installment)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="ระบุค่างวดผ่อนชำระ"
+                    value={installmentAmount}
+                    onChange={e => setInstallmentAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 font-bold font-mono text-emerald-700 placeholder-slate-400"
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-sans">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-sans">
                 <div>
-                  <label className="block text-slate-650 font-bold mb-1">วันเริ่มทำสัญญา (StartDate) *</label>
+                  <label className="block text-slate-650 font-bold mb-1">วันที่ทำสัญญา (Contract Date) *</label>
                   <input
                     type="date"
                     required
                     value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
+                    onChange={e => {
+                      const newStart = e.target.value;
+                      setStartDate(newStart);
+                      if (disburseDate === startDate || !disburseDate) {
+                        setDisburseDate(newStart);
+                      }
+                    }}
                     className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/20 bg-slate-50/50 font-mono font-medium text-slate-800"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">วันที่เริ่มทำสัญญา / เซ็นสัญญา</p>
                 </div>
 
+                <div>
+                  <label className="block text-emerald-700 font-bold mb-1">วันเบิกเงินครั้งแรก (Disburse Date) *</label>
+                  <input
+                    type="date"
+                    required
+                    value={disburseDate}
+                    onChange={e => setDisburseDate(e.target.value)}
+                    className="w-full border border-emerald-300 p-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 bg-emerald-50/30 font-mono font-bold text-emerald-800"
+                  />
+                  <p className="text-[10px] text-emerald-600 font-medium mt-1">*ดอกเบี้ยของงวดแรกเริ่มคำนวณจาก Disburse Date นี้</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-sans">
                 <div>
                   <label className="block text-slate-650 font-bold mb-1">กำหนด Due Date *</label>
                   <select
@@ -577,6 +698,61 @@ export default function InputContract() {
                       </label>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Snapshot/Migration carrying section */}
+              <div className="bg-amber-50/20 p-4 rounded-xl border border-amber-100/50 space-y-3 text-xs font-sans">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="isSnapshotEnabled"
+                    checked={isSnapshotEnabled}
+                    onChange={e => setIsSnapshotEnabled(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 accent-amber-600 cursor-pointer"
+                  />
+                  <label htmlFor="isSnapshotEnabled" className="text-slate-700 font-extrabold cursor-pointer select-none flex items-center">
+                    <span>ระบุยอดยกยอดมา (สำหรับสัญญานำเข้าระบบ / Migration Snapshot)</span>
+                  </label>
+                </div>
+                
+                {isSnapshotEnabled && (
+                  <div className="space-y-3 pt-1">
+                    <p className="text-[10px] text-amber-850 bg-amber-50 p-2.5 rounded border border-amber-100 leading-relaxed font-sans">
+                      💡 <strong>สำหรับการโอนย้ายพอร์ตสัญญา:</strong> ระบบจะใช้ <strong>ยอดเงินเบิกรับสะสมต้นทาง</strong> ในการสร้างตารางค่างวดผ่อนชำระดั้งเดิม และเทียบกับ <strong>ยอดเงินต้นคงเหลือปัจจุบัน</strong> เพื่อทำเครื่องหมายชำระเงินงวดก่อนหน้าให้เป็นสถานะ <strong>ชำระแล้ว (PAID)</strong> อัตโนมัติ เพื่อให้พอร์ตสัญญาตรงกับความจริงและคำนวณดอกเบี้ยล่วงหน้าสำหรับงวดที่เหลือได้อย่างถูกต้อง
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-slate-650 font-bold mb-1">ยอดเงินกู้เบิกรับสะสมต้นทาง (Original Disbursed Amount) *</label>
+                        <input
+                          type="number"
+                          required={isSnapshotEnabled}
+                          min={1}
+                          value={snapshotDisbursed}
+                          onChange={e => setSnapshotDisbursed(Number(e.target.value))}
+                          className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 bg-white font-bold font-mono text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-650 font-bold mb-1">ยอดเงินต้นคงเหลือยกยอดมาปัจจุบัน (Outstanding Principal) *</label>
+                        <input
+                          type="number"
+                          required={isSnapshotEnabled}
+                          min={0}
+                          value={snapshotOutstanding}
+                          onChange={e => setSnapshotOutstanding(Number(e.target.value))}
+                          className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 bg-white font-bold font-mono text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Alert */}
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-rose-700 font-bold font-sans">
+                  ⚠️ {formError}
                 </div>
               )}
 

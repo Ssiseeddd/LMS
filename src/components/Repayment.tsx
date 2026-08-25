@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { getRepayments, getContracts, recordRepayment } from '../dbStore';
-import { Repayment as RepaymentType, Contract } from '../types';
-import { Search, Plus, Download, Coins, Receipt, CheckCircle2, AlertCircle } from 'lucide-react';
+import { getRepayments, getContracts, recordRepayment, getScheduledPayments, getSystemDate, getFirstDisbursementDate } from '../dbStore';
+import { Repayment as RepaymentType, Contract, ScheduledPayment } from '../types';
+import { Search, Plus, Download, Coins, Receipt, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import DocViewerModal from './DocViewerModal';
+import { getInterestCalculationBreakdown, allocateHorizontalPayment, recalculateFutureSchedules } from '../financialEngine';
 
 export default function Repayment() {
+  const getTodayDateString = () => {
+    return getSystemDate();
+  };
+
   const [repayments, setRepayments] = useState<RepaymentType[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [schedules, setSchedules] = useState<ScheduledPayment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchName, setSearchName] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form states
   const [selectedContractId, setSelectedContractId] = useState('');
-  const [amountPaid, setAmountPaid] = useState<number>(11172.08);
-  const [paymentDate, setPaymentDate] = useState('2026-05-22');
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [paymentDate, setPaymentDate] = useState('');
+  const [contractSearchQuery, setContractSearchQuery] = useState('');
+  const [isContractDropdownOpen, setIsContractDropdownOpen] = useState(false);
 
   // Success Feedback view states
   const [showAllocationReceipt, setShowAllocationReceipt] = useState(false);
@@ -25,33 +33,35 @@ export default function Repayment() {
   const [selectedReceiptContract, setSelectedReceiptContract] = useState<Contract | null>(null);
   const [selectedReceiptRepay, setSelectedReceiptRepay] = useState<RepaymentType | undefined>(undefined);
 
-  useEffect(() => {
+  const reloadData = () => {
     setRepayments(getRepayments());
     setContracts(getContracts());
-  }, []);
+    setSchedules(getScheduledPayments());
+  };
 
-  // Update default payment offer dynamically when Contract modifies
   useEffect(() => {
-    const found = contracts.find(c => c.id === selectedContractId);
-    if (found) {
-      if (found.productType === 'HP') {
-        // Offer standard HP installment ~ 11172.08
-        setAmountPaid(found.creditLimit * 0.0931); // Rough installment
-      } else {
-        setAmountPaid(found.creditLimit * 0.08); // Normal loan rough installments
-      }
-    }
-  }, [selectedContractId, contracts]);
+    reloadData();
+    // Do not set default payment date to today/system date, keep it empty!
+
+    const handleDateChanged = () => {
+      reloadData();
+    };
+    window.addEventListener('system-date-changed', handleDateChanged);
+    return () => {
+      window.removeEventListener('system-date-changed', handleDateChanged);
+    };
+  }, []);
 
   const handleRepaySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedContractId || amountPaid <= 0) return;
+    if (!selectedContractId || amountPaid <= 0 || !paymentDate) return;
 
     const recorded = recordRepayment(selectedContractId, Number(amountPaid), paymentDate);
 
     if (recorded) {
       setRepayments(getRepayments());
       setContracts(getContracts());
+      setSchedules(getScheduledPayments());
       setLastAllocatedRepayment(recorded);
       setShowAllocationReceipt(true);
       setIsModalOpen(false);
@@ -61,16 +71,20 @@ export default function Repayment() {
 
   const resetForm = () => {
     setSelectedContractId('');
-    setAmountPaid(5000);
-    setPaymentDate('2026-05-22');
+    setAmountPaid(0);
+    setPaymentDate('');
+    setContractSearchQuery('');
+    setIsContractDropdownOpen(false);
   };
 
   const handleExportCSV = () => {
-    const headers = 'Receipt No.,Contract ID,Customer Name,Payment Date,Gross Paid,Penalty Settled,Tracking Fee Settled,Interest Settled,Principal Settled,VAT Settled\n';
+    const headers = 'Receipt No.,Contract ID,Customer Name,Payment Date,Gross Paid,Penalty Settled,Tracking Fee Settled,Interest Settled,Principal Settled,VAT Settled,Outstanding Principal\n';
     const rows = repayments.map(r => {
-      const parent = contracts.find(c => c.id === r.contractId);
+      const rCid = (r.contractId || '').trim().toUpperCase();
+      const parent = contracts.find(c => (c.id || '').trim().toUpperCase() === rCid);
       const name = parent ? parent.customerName : 'N/A';
-      return `"${r.receiptNo}","${r.contractId}","${name}","${r.paymentDate}",${r.amountPaid},${r.appliedPenalty},${r.appliedTrackingFee},${r.appliedInterest},${r.appliedPrincipal},${r.appliedVat}`;
+      const outstandingVal = r.outstandingPrincipal !== undefined ? r.outstandingPrincipal : '';
+      return `"${r.receiptNo}","${r.contractId}","${name}","${r.paymentDate}",${r.amountPaid},${r.appliedPenalty},${r.appliedTrackingFee},${r.appliedInterest},${r.appliedPrincipal},${r.appliedVat},${outstandingVal}`;
     }).join('\n');
 
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -89,7 +103,8 @@ export default function Repayment() {
 
   // Open Receipt PDF Modal Viewer
   const handleOpenReceipt = (repay: RepaymentType) => {
-    const con = contracts.find(c => c.id === repay.contractId);
+    const rCid = (repay.contractId || '').trim().toUpperCase();
+    const con = contracts.find(c => (c.id || '').trim().toUpperCase() === rCid);
     if (con) {
       setSelectedReceiptContract(con);
       setSelectedReceiptRepay(repay);
@@ -99,13 +114,25 @@ export default function Repayment() {
 
   // Filters
   const filteredRepays = repayments.filter(r => {
-    const parent = contracts.find(c => c.id === r.contractId);
+    const rCid = (r.contractId || '').trim().toUpperCase();
+    const parent = contracts.find(c => (c.id || '').trim().toUpperCase() === rCid);
     const parentName = parent ? parent.customerName.toLowerCase() : '';
     const matchesId = r.contractId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesName = parentName.includes(searchName.toLowerCase());
 
     return (searchTerm ? matchesId : true) && (searchName ? matchesName : true);
   });
+
+  // Filter active contracts for modal search
+  const filteredContractsInModal = contracts
+    .filter(c => c.status !== 'CLOSED')
+    .filter(c => {
+      const query = contractSearchQuery.toLowerCase();
+      return (
+        c.id.toLowerCase().includes(query) ||
+        c.customerName.toLowerCase().includes(query)
+      );
+    });
 
   return (
     <div className="space-y-6">
@@ -241,21 +268,22 @@ export default function Repayment() {
                 <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดเงินต้นค้าง</th>
                 <th className="px-3 py-3 text-right border-r border-slate-200/30">ตัดภาษี VAT</th>
                 <th className="px-3 py-3 text-right bg-sky-50/40 text-sky-700 font-bold border-r border-slate-200/30">จำนวกระแสเงินฝากเข้ามา</th>
+                <th className="px-3 py-3 text-right bg-indigo-50/40 text-indigo-700 font-bold border-r border-slate-200/30">เงินต้นคงเหลือหลังชำระ</th>
                 <th className="px-3 py-3 text-center">พิมพ์ใบกำกับ/ใบเสร็จ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150 text-slate-650 font-sans">
               {filteredRepays.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-400 font-sans">
+                  <td colSpan={12} className="p-8 text-center text-slate-400 font-sans">
                     ไม่พบรายการประวัติการชำระค่างวดอ้างอิงขณะนี้ในพอร์ตระบบ
                   </td>
                 </tr>
               ) : (
-                filteredRepays.map(r => {
+                filteredRepays.map((r, idx) => {
                   const parent = contracts.find(c => c.id === r.contractId);
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-0 hover:text-slate-900">
+                    <tr key={`${r.id}-${idx}`} className="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-0 hover:text-slate-900">
                       <td className="px-3 py-2.5 font-mono font-bold text-slate-700 border-r border-slate-100/40">{r.receiptNo}</td>
                       <td className="px-3 py-2.5 font-mono font-bold text-sky-600 uppercase tracking-wider border-r border-slate-100/40">{r.contractId}</td>
                       <td className="px-3 py-2.5 font-semibold text-slate-800 border-r border-slate-100/40">{parent ? parent.customerName : 'N/A'}</td>
@@ -278,6 +306,9 @@ export default function Repayment() {
                       </td>
                       
                       <td className="px-3 py-2.5 text-right font-mono font-bold text-sky-750 bg-sky-50/20 border-r border-slate-100/40">{formatThb(r.amountPaid)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/10 border-r border-slate-100/40">
+                        {r.outstandingPrincipal !== undefined ? formatThb(r.outstandingPrincipal) : '-'}
+                      </td>
                       <td className="px-3 py-2.5 text-center">
                         <button
                           onClick={() => handleOpenReceipt(r)}
@@ -316,21 +347,62 @@ export default function Repayment() {
             <form onSubmit={handleRepaySubmit} className="p-6 space-y-5 text-xs">
               <div>
                 <label className="block text-slate-600 font-bold mb-1">เลือกหมายเลขทะเบียนสัญญาลูกหนี้ *</label>
-                <select
-                  required
-                  value={selectedContractId}
-                  onChange={e => setSelectedContractId(e.target.value)}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-bold text-slate-850"
-                >
-                  <option value="">-- กรุณาเลือกบัญชีสัญญาที่ต้องการตัดยอดชำระ --</option>
-                  {contracts
-                    .filter(c => c.status !== 'CLOSED')
-                    .map(c => (
-                      <option key={c.id} value={c.id}>
-                        [{c.id}] {c.customerName} (คงเหลือค้างต้นกู้หลัก: {formatThb(c.outstandingPrincipal)})
-                      </option>
-                    ))}
-                </select>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsContractDropdownOpen(!isContractDropdownOpen)}
+                    className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-bold text-slate-850 text-left flex justify-between items-center transition"
+                  >
+                    <span className="truncate pr-2">
+                      {selectedContractId
+                        ? `[${selectedContractId}] ${contracts.find(c => c.id === selectedContractId)?.customerName} (คงเหลือค้างต้นกู้หลัก: ${formatThb(contracts.find(c => c.id === selectedContractId)?.outstandingPrincipal || 0)})`
+                        : '-- กรุณาเลือกบัญชีสัญญาที่ต้องการตัดยอดชำระ --'}
+                    </span>
+                    <span className="text-slate-400 text-[10px]">▼</span>
+                  </button>
+                  
+                  {isContractDropdownOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40 cursor-default" 
+                        onClick={() => setIsContractDropdownOpen(false)} 
+                      />
+                      <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
+                        <div className="p-2 border-b border-slate-100 bg-slate-50">
+                          <input
+                            type="text"
+                            placeholder="พิมพ์เพื่อค้นหา (รหัสสัญญา หรือ ชื่อสมาชิกลูกหนี้)..."
+                            value={contractSearchQuery}
+                            onChange={(e) => setContractSearchQuery(e.target.value)}
+                            className="w-full border border-slate-200 px-3 py-1.5 rounded text-xs focus:outline-none focus:border-sky-500 bg-white"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-44">
+                          {filteredContractsInModal.length === 0 ? (
+                            <div className="p-3 text-center text-slate-400">ไม่พบสัญญาที่ตรงเงื่อนไข</div>
+                          ) : (
+                            filteredContractsInModal.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedContractId(c.id);
+                                  setIsContractDropdownOpen(false);
+                                  setContractSearchQuery('');
+                                }}
+                                className={`w-full text-left p-2.5 text-xs hover:bg-sky-50 transition flex flex-col gap-0.5 cursor-pointer ${selectedContractId === c.id ? 'bg-sky-50/70 font-bold text-sky-700' : 'text-slate-700'}`}
+                              >
+                                <span className="font-mono font-bold">[{c.id}] {c.customerName}</span>
+                                <span className="text-[10px] text-slate-400">คงเหลือค้างต้นกู้หลัก: {formatThb(c.outstandingPrincipal)}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -340,7 +412,7 @@ export default function Repayment() {
                     type="number"
                     required
                     step="0.01"
-                    min="1"
+                    min="0"
                     value={amountPaid}
                     onChange={e => setAmountPaid(Number(e.target.value))}
                     className="w-full border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-sky-500 bg-slate-50/50 font-bold text-slate-800 text-sm font-mono"
@@ -359,17 +431,226 @@ export default function Repayment() {
                 </div>
               </div>
 
-              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 space-y-2 text-slate-700">
-                <span className="font-bold flex items-center text-amber-900 border-b border-amber-200/50 pb-1 mb-1">
-                  <AlertCircle className="w-4 h-4 mr-1 text-amber-700" />
-                  หลักเกณฑ์ลอจิกการหักลบแนวนอน (Horizontal Grace Period Rules)
-                </span>
-                <p className="leading-relaxed text-[10px] text-slate-500">
-                  ระบบ LMS จะจัดกระจายเงินตามช่วงชั้นแนวนอนทีละงวดเรียงจากงวดที่เก่าที่สุด: <br/>
-                  <strong>ค่าปรับ (Penalty) &rarr; ค่าทวงถาม (Collection) &rarr; ดอกเบี้ย (Interest) &rarr; เงินต้น (Principal) + ภาษี (VAT)</strong> <br/>
-                  เมื่อชำระงวดเก่าครบ 100% จึงย้ายไปหักชำระค่างวดถัดไปตามลำดับ!
-                </p>
-              </div>
+              {selectedContractId && (
+                <div className="space-y-4">
+                  {/* Daily / Term Interest Breakdown Card */}
+                  <div className="p-4 bg-sky-50/70 border border-sky-100 rounded-lg space-y-3">
+                    <span className="font-extrabold text-sky-850 flex items-center gap-1.5 text-xs">
+                      <Info className="w-4 h-4 text-sky-600" />
+                      {(() => {
+                        const con = contracts.find(c => c.id === selectedContractId);
+                        return con?.productType === 'HP'
+                          ? 'รายละเอียดดอกเบี้ยและภาษีมูลค่าเพิ่มประจำงวด (HP Interest & VAT Breakdown)'
+                          : 'รายละเอียดวิธีคำนวณดอกเบี้ย ณ วันที่ระบุชำระจริง (Daily Interest Breakdown)';
+                      })()}
+                    </span>
+                    {(() => {
+                      const con = contracts.find(c => c.id === selectedContractId);
+                      if (!con) return null;
+
+                      const selCid = (selectedContractId || '').trim().toUpperCase();
+                      const activeSchedules = schedules
+                        .filter(s => (s.contractId || '').trim().toUpperCase() === selCid)
+                        .sort((a, b) => a.termNumber - b.termNumber);
+
+                      const nextUnpaidTerm = activeSchedules.find(s => s.status !== 'PAID');
+                      if (!nextUnpaidTerm) {
+                        return (
+                           <p className="text-emerald-700 font-bold bg-emerald-55/35 p-2 rounded text-[11px] border border-emerald-100 font-sans">
+                             สัญญานี้ได้รับการชำระครบกำหนดครบถ้วนเรียบร้อยแล้ว! ไม่มียอดค้างชำระที่คำนวณได้
+                           </p>
+                        );
+                      }
+
+                      // Compute dynamic interest breakdown based on user simulation date!
+                      const effectivePaymentDate = paymentDate || getTodayDateString();
+                      const breakdown = getInterestCalculationBreakdown(con, nextUnpaidTerm.termNumber, schedules, repayments, effectivePaymentDate);
+                      const totalInterest = Math.round(breakdown.reduce((sum, b) => sum + b.interestCharged, 0) * 100) / 100;
+
+                      const priorCarriedAccrued = Math.round(
+                        activeSchedules
+                          .filter(s => s.termNumber < nextUnpaidTerm.termNumber && (s.accruedInterest || 0) > 0)
+                          .reduce((sum, s) => sum + (s.accruedInterest || 0), 0) * 100
+                      ) / 100;
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center bg-white p-2 rounded border border-sky-100/50 text-[11px]">
+                            <div>
+                              <span className="text-slate-500 font-bold block">งวดถัดไปที่ตัดชำระ:</span>
+                              <span className="font-extrabold text-sky-800 font-mono">งวดที่ {nextUnpaidTerm.termNumber} (Due: {nextUnpaidTerm.dueDate})</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-500 font-bold block">
+                                {con.productType === 'HP' ? 'ดอกเบี้ยเรียกเก็บงวดนี้:' : 'ดอกเบี้ยคำนวณสะสมช่วงงวดนี้:'}
+                              </span>
+                              <span className="font-black text-emerald-600 text-xs font-mono">
+                                {formatThb(totalInterest)}
+                                {priorCarriedAccrued > 0 && (
+                                  <span className="text-[10px] text-amber-600 font-normal ml-1">
+                                    (+ยกมา {formatThb(priorCarriedAccrued)})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {breakdown.length > 0 ? (
+                            <div className="max-h-36 overflow-y-auto rounded border border-slate-200/80 bg-white">
+                              <table className="w-full text-left border-collapse text-[10px]">
+                                <thead>
+                                  <tr className="bg-slate-50 border-b text-slate-500 font-bold sticky top-0">
+                                    <th className="p-2">{con.productType === 'HP' ? 'ค่างวดบัญชี' : 'ช่วงเวลาใช้เงินกู้จริง'}</th>
+                                    <th className="p-2 text-center">{con.productType === 'HP' ? 'ประเภท' : 'จำนวนวัน'}</th>
+                                    <th className="p-2 text-right">เงินต้นคงเหลือ (Outstanding)</th>
+                                    <th className="p-2 text-right text-sky-850">ดอกเบี้ย (Interest)</th>
+                                    {con.productType === 'HP' && <th className="p-2 text-right text-indigo-700">ภาษีมูลค่าเพิ่ม (VAT 7%)</th>}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-650 font-mono">
+                                  {breakdown.map((b, bIdx) => (
+                                    <tr key={bIdx} className="hover:bg-sky-50/20">
+                                      <td className="p-2 font-sans">
+                                        {con.productType === 'HP'
+                                          ? `งวดเช่าซื้อที่ ${nextUnpaidTerm.termNumber} (Due: ${nextUnpaidTerm.dueDate})`
+                                          : `${b.startDate} ถึง ${b.endDate}`}
+                                      </td>
+                                      <td className="p-2 text-center text-slate-500 font-bold">
+                                        {con.productType === 'HP' ? 'รายงวด (HP)' : `${b.daysCount} วัน`}
+                                      </td>
+                                      <td className="p-2 text-right text-slate-700 font-bold">{formatThb(b.principal)}</td>
+                                      <td className="p-2 text-right font-black text-emerald-600">{formatThb(b.interestCharged)}</td>
+                                      {con.productType === 'HP' && (
+                                        <td className="p-2 text-right font-black text-indigo-600">{formatThb(nextUnpaidTerm.vatDue)}</td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-slate-400 italic text-center py-2 text-[10px] bg-slate-50 rounded">
+                              ไม่มีข้อมูลย่อยการคำนวณดอกเบี้ย
+                            </p>
+                          )}
+                          
+                          {con.productType === 'HP' ? (
+                            <p className="text-[9px] text-slate-400 leading-normal font-sans">
+                              * สัญญาเช่าซื้อคิดดอกเบี้ยแบบรายงวด (Monthly Effective Rate) อัตรา {con.interestRate}% ต่อปี <br />
+                              สูตร: <code className="font-mono bg-slate-100 px-1 rounded font-bold">เงินต้นคงเหลือตามตาราง × {con.interestRate}% / 12</code> <br />
+                              (และคำนวณภาษีมูลค่าเพิ่ม VAT 7% จากยอดรวม [เงินต้น + ดอกเบี้ย] ประจำงวด)
+                            </p>
+                          ) : (
+                            <p className="text-[9px] text-slate-400 leading-normal font-sans">
+                              * คิดแบบลดต้นลดดอกรายวัน (Daily Reducing Balance) อัตรา {con.interestRate}% ต่อปี <br />
+                              สูตร: <code className="font-mono bg-slate-100 px-1 rounded font-bold">เงินต้น × {con.interestRate}% × (วัน / 365)</code>
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* REAL-TIME ALLOCATION PREVIEW CARD */}
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-100 rounded-lg space-y-3">
+                    <span className="font-extrabold text-emerald-900 flex items-center gap-1.5 text-xs">
+                      <Coins className="w-4 h-4 text-emerald-600 animate-pulse" />
+                      จำลองลำดับตารางการตัดยอดรับชำระ (Repayment Allocation Preview)
+                    </span>
+                    {(() => {
+                      const con = contracts.find(c => c.id === selectedContractId);
+                      if (!con) return null;
+
+                      // Run simulated recalculation & allocation
+                      const simCid = (selectedContractId || '').trim().toUpperCase();
+                      const simSchedules = schedules
+                        .filter(s => (s.contractId || '').trim().toUpperCase() === simCid)
+                        .sort((a, b) => a.termNumber - b.termNumber);
+                      
+                      const effectivePaymentDate = paymentDate || getTodayDateString();
+                      const firstDisbDate = getFirstDisbursementDate(con.id) || con.firstDisburseDate || con.startDate;
+                      const simulatedRecalcSchedules = recalculateFutureSchedules(con, schedules, effectivePaymentDate, repayments, firstDisbDate);
+                      const simResult = allocateHorizontalPayment(
+                        simulatedRecalcSchedules,
+                        selectedContractId,
+                        amountPaid || 0,
+                        effectivePaymentDate,
+                        con.productType === 'HP' ? 0.07 : 0,
+                        firstDisbDate,
+                        repayments,
+                        con
+                      );
+
+                      const totalAllocated = simResult.allocationItems.reduce((sum, item) => sum + item.total, 0);
+                      const excessCash = Math.max(0, (amountPaid || 0) - totalAllocated);
+
+                      if (!amountPaid || amountPaid <= 0) {
+                        return (
+                          <p className="text-slate-400 italic text-center py-2.5 text-[11px] bg-white rounded border border-slate-100">
+                            กรุณาระบุจำนวนยอดเงินชำระ เพื่อพรีวิวลำดับการตัดชำระค่างวดจริงรายรายการ
+                          </p>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {simResult.allocationItems.length === 0 ? (
+                            <p className="text-amber-700 font-bold bg-amber-50 p-2 rounded text-[11px] border border-amber-100">
+                              ไม่มียอดค้างชำระที่ต้องตัดจ่าย หรือเงินน้อยกว่าส่วนที่จะหักชำระได้
+                            </p>
+                          ) : (
+                            <div className="max-h-36 overflow-y-auto rounded border border-slate-200/80 bg-white">
+                              <table className="w-full text-left border-collapse text-[10px]">
+                                <thead>
+                                  <tr className="bg-slate-50 border-b text-slate-500 font-bold sticky top-0">
+                                    <th className="p-2">งวดที่จะถูกหัก (Term)</th>
+                                    <th className="p-2 text-right text-rose-600">ตัดเบี้ยปรับ (Penalty)</th>
+                                    <th className="p-2 text-right text-rose-600">ตัดทวงถาม (Tracking)</th>
+                                    <th className="p-2 text-right text-emerald-600">ตัดดอกเบี้ย (Interest)</th>
+                                    <th className="p-2 text-right text-slate-800">ตัดเงินต้น (Principal)</th>
+                                    {con.productType === 'HP' && <th className="p-2 text-right text-indigo-600">ตัดภาษี (VAT)</th>}
+                                    <th className="p-2 text-right font-bold text-emerald-800">รวมตัด (Total)</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-650 font-mono">
+                                  {simResult.allocationItems.map((item, itemIdx) => (
+                                    <tr key={itemIdx} className="hover:bg-emerald-50/20">
+                                      <td className="p-2 font-sans font-bold text-slate-700">งวดที่ {item.termNumber}</td>
+                                      <td className="p-2 text-right text-rose-600">{item.penalty > 0 ? formatThb(item.penalty) : '-'}</td>
+                                      <td className="p-2 text-right text-rose-600">{item.trackingFee > 0 ? formatThb(item.trackingFee) : '-'}</td>
+                                      <td className="p-2 text-right text-emerald-600">{item.interest > 0 ? formatThb(item.interest) : '-'}</td>
+                                      <td className="p-2 text-right text-slate-800">{item.principal > 0 ? formatThb(item.principal) : '-'}</td>
+                                      {con.productType === 'HP' && (
+                                        <td className="p-2 text-right text-indigo-600">{item.vat > 0 ? formatThb(item.vat) : '-'}</td>
+                                      )}
+                                      <td className="p-2 text-right font-bold text-emerald-700">{formatThb(item.total)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          <div className="bg-emerald-100/40 p-2.5 rounded border border-emerald-200/50 space-y-1 text-[11px] font-sans">
+                            <div className="flex justify-between">
+                              <span className="text-slate-600 font-bold">รวมยอดเงินจัดสรรตัดชำระจริง:</span>
+                              <span className="font-extrabold text-emerald-800 font-mono">{formatThb(totalAllocated)}</span>
+                            </div>
+                            {excessCash > 0.01 && (
+                              <div className="flex justify-between border-t border-emerald-200/30 pt-1 text-sky-800">
+                                <span className="font-bold">เงินเหลือล้นงวด (Excess / ชำระล่วงหน้า):</span>
+                                <span className="font-black font-mono">{formatThb(excessCash)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+
 
               <div className="flex justify-end space-x-3 border-t border-slate-150 pt-5 font-sans">
                 <button
@@ -399,6 +680,7 @@ export default function Repayment() {
           type="RECEIPT"
           contract={selectedReceiptContract}
           repayment={selectedReceiptRepay}
+          schedules={schedules}
         />
       )}
     </div>

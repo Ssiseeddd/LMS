@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getDisbursements, getContracts, disburseContract } from '../dbStore';
-import { Disbursement as DisbursementType, Contract } from '../types';
-import { Search, Plus, Download, ArrowUpRight } from 'lucide-react';
+import { getDisbursements, getContracts, disburseContract, getSystemDate, getScheduledPayments } from '../dbStore';
+import { Disbursement as DisbursementType, Contract, ScheduledPayment } from '../types';
+import { Search, Plus, Download, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { addMonths } from '../financialEngine';
 
 export default function Disbursement() {
   const [disbursements, setDisbursements] = useState<DisbursementType[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [schedules, setSchedules] = useState<ScheduledPayment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchName, setSearchName] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,7 +15,7 @@ export default function Disbursement() {
   // Form states
   const [selectedContractId, setSelectedContractId] = useState('');
   const [amount, setAmount] = useState<number>(2000);
-  const [disburseDate, setDisburseDate] = useState('2026-05-22');
+  const [disburseDate, setDisburseDate] = useState(getSystemDate());
   const [description, setDescription] = useState('');
 
   // Loaded contract detail for guidance
@@ -22,6 +24,7 @@ export default function Disbursement() {
   useEffect(() => {
     setDisbursements(getDisbursements());
     setContracts(getContracts());
+    setSchedules(getScheduledPayments());
   }, []);
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function Disbursement() {
     setSelectedContractId('');
     setAmount(2000);
     setDescription('');
-    setDisburseDate('2026-05-22');
+    setDisburseDate(getSystemDate());
   };
 
   const handleExportCSV = () => {
@@ -101,6 +104,15 @@ export default function Disbursement() {
     const prevs = disbursements.filter(d => d.contractId === conId).length;
     return prevs + 1;
   };
+
+  const systemDate = getSystemDate();
+  const threeMonthsFromNow = addMonths(systemDate, 3);
+
+  const pendingSchedules = schedules.filter(s => {
+    if (!s.pendingDisbursement || s.pendingDisbursement <= 0) return false;
+    if (!s.dueDate) return true; // Show if no due date set yet
+    return s.dueDate <= threeMonthsFromNow;
+  });
 
   return (
     <div className="space-y-6">
@@ -147,6 +159,67 @@ export default function Disbursement() {
           </button>
         </div>
       </div>
+
+      {/* Pending Disbursements Table */}
+      {pendingSchedules.length > 0 && (
+        <div className="bg-white rounded-xl border border-amber-200 shadow-xs overflow-hidden">
+          <div className="px-6 py-4.5 border-b border-amber-100 bg-amber-50/50 flex justify-between items-center">
+            <h3 className="font-extrabold text-amber-800 text-xs uppercase tracking-wider font-mono flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" /> รายการรอเบิกจ่าย (Pending Disbursements)
+            </h3>
+            <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200 font-mono">
+              รวม {pendingSchedules.length} รายการ
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-amber-50/30 border-b border-amber-100 text-amber-700 font-bold uppercase tracking-wider text-[10px]">
+                  <th className="px-3 py-3 border-r border-amber-100/50">เลขที่สัญญา</th>
+                  <th className="px-3 py-3 font-sans border-r border-amber-100/50">ชื่อลูกค้า</th>
+                  <th className="px-3 py-3 text-center border-r border-amber-100/50">งวดที่</th>
+                  <th className="px-3 py-3 text-center border-r border-amber-100/50">กำหนดรับเงิน</th>
+                  <th className="px-3 py-3 text-right header-num">ยอดรอเบิก (THB)</th>
+                  <th className="px-3 py-3 text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100/50 text-slate-650 font-sans">
+                {pendingSchedules.map(sch => {
+                  const parent = contracts.find(c => c.id === sch.contractId);
+                  // Hide if contract is closed
+                  if (parent?.status === 'CLOSED') return null;
+                  
+                  return (
+                    <tr key={sch.id} className="hover:bg-amber-50/40 transition">
+                      <td className="px-3 py-2.5 font-mono font-bold text-amber-700 uppercase tracking-wider border-r border-amber-100/50">{sch.contractId}</td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-800 border-r border-amber-100/50">{parent ? parent.customerName : 'N/A'}</td>
+                      <td className="px-3 py-2.5 text-center border-r border-amber-100/50">
+                        <span className="bg-amber-100/50 text-amber-700 border border-amber-200/50 px-2 py-0.5 rounded font-mono font-bold text-[10px]">{sch.termNumber}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-mono font-semibold text-amber-700 border-r border-amber-100/50">
+                        {sch.dueDate ? new Date(sch.dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-700 border-r border-amber-100/50">{formatThb(sch.pendingDisbursement || 0)}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button 
+                          onClick={() => {
+                            setSelectedContractId(sch.contractId);
+                            setAmount(sch.pendingDisbursement || 0);
+                            setIsModalOpen(true);
+                          }}
+                          className="text-[10px] bg-sky-600 text-white px-3 py-1.5 rounded font-bold hover:bg-sky-700 transition"
+                        >
+                          ทำรายการเบิก
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* History Ledger Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
